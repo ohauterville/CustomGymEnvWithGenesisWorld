@@ -1,0 +1,1 @@
+THe goal is to set a custom environment in Gym with Genesis-world to learn robots to do stuff.
