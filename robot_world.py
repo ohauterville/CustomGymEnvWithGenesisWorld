@@ -15,6 +15,7 @@ class RobotWorld:
         if render_mode == None:
             self.scene = gs.Scene(
                 show_viewer=False,
+                show_FPS=False,
                 rigid_options=gs.options.RigidOptions(
                     dt=0.01,
                 ),
@@ -121,7 +122,7 @@ class RobotWorld:
                 [self.robot_entity.get_dofs_position().cpu().numpy(), self.target_pos]
             )
 
-    def compute_reward_function(self, threshold=0.01, max_reward=100.0, c=0.001, d=0.1):
+    def compute_reward_function(self, threshold=0.1, max_reward=500.0, c=0.001, d=1):
         # if n_envs > 1, change,  to do
         last_link_pos = self.robot_entity.get_links_pos()[-1, :].cpu().numpy()
 

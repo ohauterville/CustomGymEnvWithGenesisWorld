@@ -3,8 +3,6 @@ from gymnasium import spaces
 from gymnasium.envs.registration import register
 from gymnasium.utils.env_checker import check_env
 
-from torch.utils.tensorboard import SummaryWriter
-
 from robot_world import RobotWorld
 
 import os
@@ -67,55 +65,8 @@ class CustomEnv(gym.Env):
 
 
 if __name__ == "__main__":
-    n_episodes = 100
     env_name = "CustomEnv-v0"
-
-    model_dir = os.path.join("models", env_name)
-    log_dir = os.path.join("logs", env_name)
-
-    if not os.path.exists(model_dir):
-        os.makedirs(model_dir)
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-
-    env = gym.make(env_name, render_mode="human")
-    # env = gym.make(env_name, render_mode=None)
 
     # print("Checking custom env...")
     # check_env(env.unwrapped)
     # print("Checking complete.\n")
-
-    writer = SummaryWriter(log_dir)
-    best_score = 0
-    best_ep = 0
-
-    episode_identifier = f"{env_name}"  # =actor_learning_rate={actor_learning_rate} critic_learning_rate={critic_learning_rate} layer1_size={layer1_size} layer2_size={layer2_size}"
-
-    for i in range(n_episodes):
-        obs = env.reset()[0]
-        score = 0
-        done = False
-
-        # Take some random actions
-        while not done:
-            rand_action = env.action_space.sample()
-            obs, reward, terminated, truncated, info = env.step(rand_action)
-            score += reward
-
-            if terminated or truncated:
-                done = True
-
-        writer.add_scalar(f"Run - {episode_identifier}", score, global_step=i)
-
-        print(f"Episode: {i} score {score}")
-        if i % 25 == 0 or i == n_episodes - 1:
-            pass
-            # agent.save_models()
-
-        if score > best_score:
-            # agent.save_models(best_models=True)
-            best_score = score
-            best_ep = i
-
-    print("\nTraining complete.\n")
-    print(f"Best score: {best_score} at episode: {best_ep}\n")
