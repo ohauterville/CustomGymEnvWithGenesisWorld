@@ -3,8 +3,9 @@ import numpy as np
 import random
 import torch
 
+
 class RobotWorld:
-    def __init__(self, render_mode=None, max_steps=300):
+    def __init__(self, render_mode=None, max_steps=150):
         ########################## config #######################
 
         ########################## init ##########################
@@ -21,9 +22,9 @@ class RobotWorld:
 
         elif render_mode == "human":
             self.scene = gs.Scene(
-                show_viewer = True,
+                show_viewer=True,
                 show_FPS=False,
-                viewer_options = gs.options.ViewerOptions(
+                viewer_options=gs.options.ViewerOptions(
                     camera_pos=(3.5, -1.0, 2.5),
                     camera_lookat=(0.0, 0.0, 0.5),
                     camera_fov=40,
@@ -68,31 +69,32 @@ class RobotWorld:
         self.dofs_idx = [
             self.robot_entity.get_joint(name).dof_idx_local for name in jnt_names
         ]
-               
+
         self.current_step = 0
-        self.max_steps = max_steps # max_steps per episodes
+        self.max_steps = max_steps  # max_steps per episodes
 
         #### learning params
         self.tau = 0.5
 
         ########################## build ##########################
-        self.n_envs = 1 # stick to 1 for now
+        self.n_envs = 1  # stick to 1 for now
         self.scene.build()
 
         ########################## get info #########################
         self.action_space_limits = self.robot_entity.get_dofs_limit()
-        self.observations_dims = 9
- 
+        # self.observations_dims = 9
+
     def step(self, action):
         self.robot_entity.control_dofs_position(action, self.dofs_idx)
         self.scene.step()
         next_obs = self.get_observation()
 
+        self.current_step += 1
+
         reward, terminated, truncated = self.compute_reward_function()
 
         # info
         info = {}
-        self.current_step += 1
 
         return next_obs, reward, terminated, truncated, info
 
@@ -115,26 +117,30 @@ class RobotWorld:
                 .numpy()
             )
         else:
-            return self.robot_entity.get_dofs_position().cpu().numpy()
-        
+            return np.concatenate(
+                [self.robot_entity.get_dofs_position().cpu().numpy(), self.target_pos]
+            )
 
-    def compute_reward_function(self):
-        terminated = False
-        truncated = False
-        reward = 0
+    def compute_reward_function(self, threshold=0.01, max_reward=100.0, c=0.001, d=0.1):
         # if n_envs > 1, change,  to do
         last_link_pos = self.robot_entity.get_links_pos()[-1, :].cpu().numpy()
-        
+
         distance_to_target = np.linalg.norm(last_link_pos - self.target_pos)
-        
-        if distance_to_target < 0.001:
-            reward = 1
+
+        terminated = False
+        truncated = False
+
+        if distance_to_target < threshold:
+            success_reward = max_reward * (1 - self.current_step / self.max_steps)
+            reward = success_reward
             terminated = True
             return reward, terminated, truncated
 
         else:
-            reward = 0.1*np.exp(-self.tau*distance_to_target)
-        
+            r_distance = -d * distance_to_target
+            r_time = -c
+
+            reward = r_distance + r_time
             if self.current_step > self.max_steps:
                 truncated = True
 

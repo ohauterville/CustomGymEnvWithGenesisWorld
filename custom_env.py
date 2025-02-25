@@ -38,9 +38,21 @@ class CustomEnv(gym.Env):
 
         # Init obs space
         self.observation_space = spaces.Box(
-            low=-np.pi * np.ones(self.robot_world.observations_dims),
-            high=np.pi * np.ones(self.robot_world.observations_dims),
+            low=np.concatenate(
+                [
+                    self.robot_world.action_space_limits[0].cpu().numpy(),
+                    -2*np.ones(len(self.robot_world.target_pos)),
+                ]
+            ),
+            high=np.concatenate(
+                [
+                    self.robot_world.action_space_limits[1].cpu().numpy(),
+                    2*np.ones(len(self.robot_world.target_pos)),
+                ]
+            ),
         )
+        print()
+        print(self.observation_space)
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed, options=options)
@@ -74,11 +86,10 @@ if __name__ == "__main__":
     # print("Checking complete.\n")
 
     writer = SummaryWriter(log_dir)
-    best_score = 0 
+    best_score = 0
     best_ep = 0
 
-    episode_identifier = f"{env_name}" #=actor_learning_rate={actor_learning_rate} critic_learning_rate={critic_learning_rate} layer1_size={layer1_size} layer2_size={layer2_size}"
-
+    episode_identifier = f"{env_name}"  # =actor_learning_rate={actor_learning_rate} critic_learning_rate={critic_learning_rate} layer1_size={layer1_size} layer2_size={layer2_size}"
 
     for i in range(n_episodes):
         obs = env.reset()[0]
