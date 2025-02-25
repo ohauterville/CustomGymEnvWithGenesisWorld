@@ -1,0 +1,149 @@
+import genesis as gs
+import numpy as np
+import random
+import torch
+
+class RobotWorld:
+    def __init__(self, render_mode=None, max_steps=300):
+        ########################## config #######################
+
+        ########################## init ##########################
+        gs.init(backend=gs.gpu)
+
+        ########################## create a scene ##########################
+        if render_mode == None:
+            self.scene = gs.Scene(
+                show_viewer=False,
+                rigid_options=gs.options.RigidOptions(
+                    dt=0.01,
+                ),
+            )
+
+        elif render_mode == "human":
+            self.scene = gs.Scene(
+                show_viewer = True,
+                show_FPS=False,
+                viewer_options = gs.options.ViewerOptions(
+                    camera_pos=(3.5, -1.0, 2.5),
+                    camera_lookat=(0.0, 0.0, 0.5),
+                    camera_fov=40,
+                    max_FPS=30,
+                ),
+                rigid_options=gs.options.RigidOptions(
+                    dt=0.01,
+                ),
+            )
+        else:
+            print("render_mode ill defined.")
+
+        ########################## entities ##########################
+        self.plane = self.scene.add_entity(
+            gs.morphs.Plane(),
+        )
+
+        # The target
+        self.target_pos = [0.5, 0.5, 0.1]
+
+        self.target = self.scene.add_entity(
+            gs.morphs.Box(pos=self.target_pos, size=(0.1, 0.1, 0.1))
+        )
+
+        self.robot_entity = self.scene.add_entity(
+            gs.morphs.MJCF(
+                file="xml/franka_emika_panda/panda.xml",
+            ),
+        )
+
+        jnt_names = [
+            "joint1",
+            "joint2",
+            "joint3",
+            "joint4",
+            "joint5",
+            "joint6",
+            "joint7",
+            "finger_joint1",
+            "finger_joint2",
+        ]
+        self.dofs_idx = [
+            self.robot_entity.get_joint(name).dof_idx_local for name in jnt_names
+        ]
+               
+        self.current_step = 0
+        self.max_steps = max_steps # max_steps per episodes
+
+        #### learning params
+        self.tau = 0.5
+
+        ########################## build ##########################
+        self.n_envs = 1 # stick to 1 for now
+        self.scene.build()
+
+        ########################## get info #########################
+        self.action_space_limits = self.robot_entity.get_dofs_limit()
+        self.observations_dims = 9
+ 
+    def step(self, action):
+        self.robot_entity.control_dofs_position(action, self.dofs_idx)
+        self.scene.step()
+        next_obs = self.get_observation()
+
+        reward, terminated, truncated = self.compute_reward_function()
+
+        # info
+        info = {}
+        self.current_step += 1
+
+        return next_obs, reward, terminated, truncated, info
+
+    def reset(self, seed=None):
+        self.robot_entity.set_dofs_position(np.zeros(len(self.dofs_idx)), self.dofs_idx)
+
+        random.seed(seed)
+
+        self.scene.reset()
+        obs = self.get_observation()
+        self.current_step = 0
+        info = {}
+        return obs, info
+
+    def get_observation(self, dofs_idx_local=None):
+        if dofs_idx_local is not None:
+            return (
+                self.robot_entity.get_dofs_position(dofs_idx_local=dofs_idx_local)
+                .cpu()
+                .numpy()
+            )
+        else:
+            return self.robot_entity.get_dofs_position().cpu().numpy()
+        
+
+    def compute_reward_function(self):
+        terminated = False
+        truncated = False
+        reward = 0
+        # if n_envs > 1, change,  to do
+        last_link_pos = self.robot_entity.get_links_pos()[-1, :].cpu().numpy()
+        
+        distance_to_target = np.linalg.norm(last_link_pos - self.target_pos)
+        
+        if distance_to_target < 0.001:
+            reward = 1
+            terminated = True
+            return reward, terminated, truncated
+
+        else:
+            reward = 0.1*np.exp(-self.tau*distance_to_target)
+        
+            if self.current_step > self.max_steps:
+                truncated = True
+
+            return reward, terminated, truncated
+
+
+### Unit testing
+# if __name__ == "__main__":
+#     robot = RobotWorld(render_mode="human")
+
+#     for i in range(900):
+#         robot.step(np.random.random(9))
