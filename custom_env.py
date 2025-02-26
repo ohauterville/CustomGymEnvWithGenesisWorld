@@ -38,14 +38,16 @@ class CustomEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=np.concatenate(
                 [
+                    -2 * self.sim.env_size * np.ones(3),  # ee pos
                     self.sim.action_space_limits[0].cpu().numpy(),
-                    -2 * np.ones(len(self.sim.target_pos)),
+                    -2 * self.sim.env_size * np.ones(3),  # target pos
                 ]
             ),
             high=np.concatenate(
                 [
+                    2 * self.sim.env_size * np.ones(3),  # ee pos
                     self.sim.action_space_limits[1].cpu().numpy(),
-                    2 * np.ones(len(self.sim.target_pos)),
+                    2 * self.sim.env_size * np.ones(3),  # target pos
                 ]
             ),
         )

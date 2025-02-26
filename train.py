@@ -14,7 +14,7 @@ def train_sb3(
     model_learning_rate=0.001,
     timesteps=50000,
     learning_sessions=1,
-    model_learning_starts=100,
+    model_learning_starts=1000,
 ):
 
     # Where to store trained model and logs
@@ -28,13 +28,13 @@ def train_sb3(
     print("Observation Space:", env.observation_space)
     print("Action Space:", env.action_space)
 
-    model = TD3(
+    model = PPO(
         "MlpPolicy",
         env,
         verbose=0,
         device="cuda",
         tensorboard_log=log_dir,
-        learning_starts=model_learning_starts,
+        # learning_starts=model_learning_starts,
         learning_rate=model_learning_rate,
     )
 
@@ -61,8 +61,8 @@ def tune(env_name, run_name, parameter_list, learning_sessions=1):
 
 if __name__ == "__main__":
     env_name = "CustomEnv-v0"
-    run_name = "TD3_run0"
-    learning_sessions = 10
+    run_name = "PPO_run_r0"
+    learning_sessions = 12
 
     tuning = False
 

@@ -5,7 +5,7 @@ import torch
 
 
 class GenesisWorldEnv:
-    def __init__(self, render_mode=None, max_steps=150):
+    def __init__(self, render_mode=None, max_steps=300):
         ########################## config #######################
 
         ########################## init ##########################
@@ -39,16 +39,17 @@ class GenesisWorldEnv:
         else:
             print("render_mode ill defined.")
 
+        self.env_size = 0.6  # the space around the robot
         ########################## entities ##########################
         self.plane = self.scene.add_entity(
             gs.morphs.Plane(),
         )
 
         # The target
-        self.target_pos = self.generate_target_pos()
-
+        # self.target_pos = self.generate_target_pos(self.env_size)
+        self.target_pos = [0.5, 0.4, 0.05]
         self.target = self.scene.add_entity(
-            gs.morphs.Box(pos=self.target_pos, size=(0.1, 0.1, 0.1))
+            gs.morphs.Box(pos=self.target_pos, size=(0.05, 0.05, 0.05))
         )
 
         self.robot_entity = self.scene.add_entity(
@@ -76,7 +77,6 @@ class GenesisWorldEnv:
         self.max_steps = max_steps  # max_steps per episodes
 
         #### learning params
-        self.tau = 0.5
 
         ########################## build ##########################
         self.n_envs = 1  # stick to 1 for now
@@ -87,7 +87,7 @@ class GenesisWorldEnv:
         # self.observations_dims = 9
 
     def step(self, action):
-        self.robot_entity.control_dofs_position(action, self.dofs_idx)
+        self.robot_entity.control_dofs_velocity(action)
         self.scene.step()
         next_obs = self.get_observation()
 
@@ -101,7 +101,7 @@ class GenesisWorldEnv:
         return next_obs, reward, terminated, truncated, info
 
     def reset(self, seed=None):
-        self.robot_entity.set_dofs_position(np.zeros(len(self.dofs_idx)), self.dofs_idx)
+        self.robot_entity.set_dofs_velocity(np.zeros(len(self.dofs_idx)))
 
         random.seed(seed)
 
@@ -111,49 +111,58 @@ class GenesisWorldEnv:
         info = {}
         return obs, info
 
-    def get_observation(self, dofs_idx_local=None):
-        if dofs_idx_local is not None:
-            return (
-                self.robot_entity.get_dofs_position(dofs_idx_local=dofs_idx_local)
-                .cpu()
-                .numpy()
-            )
-        else:
-            return np.concatenate(
-                [self.robot_entity.get_dofs_position().cpu().numpy(), self.target_pos]
-            )
+    def get_observation(self):
+        return np.concatenate(
+            [
+                self.robot_entity.get_links_pos()[-1, :].cpu().numpy(),
+                self.robot_entity.get_dofs_velocity().cpu().numpy(),
+                self.target.get_pos().cpu().numpy(),
+            ]
+        )
 
-    def compute_reward_function(self, threshold=0.1, max_reward=500.0, c=0.1, d=2):
+    def compute_reward_function(self, threshold=0.1, max_reward=100, c=0.1, d=0.1):
         # if n_envs > 1, change,  to do
-        last_link_pos = self.robot_entity.get_links_pos()[-1, :].cpu().numpy()
-
-        distance_to_target = np.linalg.norm(last_link_pos - self.target_pos)
+        distance_to_target = self.compute_ee_target_distance()
 
         terminated = False
         truncated = False
 
         if distance_to_target < threshold:
-            success_reward = max_reward  # * (1 - self.current_step / self.max_steps)
+            success_reward = max_reward  * (1 - self.current_step / self.max_steps)
             reward = success_reward
             terminated = True
             return reward, terminated, truncated
 
         else:
-            r_distance = -d * distance_to_target
+            r_distance = -d * np.exp(distance_to_target)
             r_time = -c
 
             reward = r_distance + r_time
             if self.current_step > self.max_steps:
                 truncated = True
 
+            # if not self.robot_entity.get_contacts(with_entity=self.plane)["link_b"].any():
+            if any(
+                x > 7
+                for x in self.robot_entity.get_contacts(with_entity=self.plane)[
+                    "link_b"
+                ]
+            ):
+                truncated = True
+                reward -= 100
+
             return reward, terminated, truncated
 
-    def generate_target_pos(self):
+    def compute_ee_target_distance(self):
+        last_link_pos = self.robot_entity.get_links_pos()[-1, :].cpu().numpy()
+        return np.linalg.norm(last_link_pos - self.target.get_pos().cpu().numpy())
+
+    def generate_target_pos(self, env_size):
         z = 0
         dist = 0
 
-        while dist < 0.3:
-            xy = np.random.uniform(low=-1.0, high=1.0, size=2)
+        while dist < 0.2:
+            xy = np.random.uniform(low=-env_size, high=env_size, size=2)
             dist = np.sqrt(np.power(xy[0], 2) + np.power(xy[1], 2))
 
         return np.array([*xy, z])
