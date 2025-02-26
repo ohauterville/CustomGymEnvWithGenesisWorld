@@ -5,7 +5,6 @@ from stable_baselines3.common.monitor import Monitor
 
 # from torch.utils.tensorboard import SummaryWriter
 import os
-import time
 import custom_env  # Even though we don't use this class here, we should include it here so that it registers the environment.
 
 
@@ -13,7 +12,7 @@ def train_sb3(
     env_name="CustomEnv-v0",
     run_name="run_0",
     model_learning_rate=0.001,
-    timesteps=25000,
+    timesteps=50000,
     learning_sessions=1,
     model_learning_starts=100,
 ):
@@ -62,7 +61,7 @@ def tune(env_name, run_name, parameter_list, learning_sessions=1):
 
 if __name__ == "__main__":
     env_name = "CustomEnv-v0"
-    run_name = "TD3"
+    run_name = "TD3_run0"
     learning_sessions = 10
 
     tuning = False

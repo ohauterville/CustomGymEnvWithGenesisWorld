@@ -3,7 +3,7 @@ from gymnasium import spaces
 from gymnasium.envs.registration import register
 from gymnasium.utils.env_checker import check_env
 
-from robot_world import RobotWorld
+from genesis_world import GenesisWorld
 
 import os
 import numpy as np
@@ -26,36 +26,36 @@ class CustomEnv(gym.Env):
         self.render_mode = render_mode
 
         # Init
-        self.robot_world = RobotWorld(render_mode=render_mode)
+        self.sim = GenesisWorld(render_mode=render_mode)
 
         # Init action space
         self.action_space = spaces.Box(
-            low=self.robot_world.action_space_limits[0].cpu().numpy(),
-            high=self.robot_world.action_space_limits[1].cpu().numpy(),
+            low=self.sim.action_space_limits[0].cpu().numpy(),
+            high=self.sim.action_space_limits[1].cpu().numpy(),
         )
 
         # Init obs space
         self.observation_space = spaces.Box(
             low=np.concatenate(
                 [
-                    self.robot_world.action_space_limits[0].cpu().numpy(),
-                    -2 * np.ones(len(self.robot_world.target_pos)),
+                    self.sim.action_space_limits[0].cpu().numpy(),
+                    -2 * np.ones(len(self.sim.target_pos)),
                 ]
             ),
             high=np.concatenate(
                 [
-                    self.robot_world.action_space_limits[1].cpu().numpy(),
-                    2 * np.ones(len(self.robot_world.target_pos)),
+                    self.sim.action_space_limits[1].cpu().numpy(),
+                    2 * np.ones(len(self.sim.target_pos)),
                 ]
             ),
         )
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed, options=options)
-        return self.robot_world.reset(seed=seed)
+        return self.sim.reset(seed=seed)
 
     def step(self, action):
-        return self.robot_world.step(action)
+        return self.sim.step(action)
 
     def render(self):
         # no need since genesis take care of it

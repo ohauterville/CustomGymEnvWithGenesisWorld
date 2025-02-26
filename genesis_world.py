@@ -4,7 +4,7 @@ import random
 import torch
 
 
-class RobotWorld:
+class GenesisWorld:
     def __init__(self, render_mode=None, max_steps=150):
         ########################## config #######################
 
@@ -123,7 +123,7 @@ class RobotWorld:
                 [self.robot_entity.get_dofs_position().cpu().numpy(), self.target_pos]
             )
 
-    def compute_reward_function(self, threshold=0.05, max_reward=500.0, c=0.01, d=1):
+    def compute_reward_function(self, threshold=0.05, max_reward=500.0, c=0.1, d=2):
         # if n_envs > 1, change,  to do
         last_link_pos = self.robot_entity.get_links_pos()[-1, :].cpu().numpy()
 
@@ -139,7 +139,7 @@ class RobotWorld:
             return reward, terminated, truncated
 
         else:
-            r_distance = d / distance_to_target
+            r_distance = -d * distance_to_target
             r_time = -c
 
             reward = r_distance + r_time
@@ -161,7 +161,4 @@ class RobotWorld:
 
 ### Unit testing
 # if __name__ == "__main__":
-#     robot = RobotWorld(render_mode="human")
-
-#     for i in range(900):
-#         robot.step(np.random.random(9))
+#      pass
