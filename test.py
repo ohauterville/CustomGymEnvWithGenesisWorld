@@ -47,6 +47,6 @@ if __name__ == "__main__":
 
     test_sb3(
         env_name=env_name,
-        model_to_load="TD3",
+        model_to_load="TD3_run0",
         episode_to_load=100000,
     )
