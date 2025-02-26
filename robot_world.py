@@ -138,7 +138,7 @@ class RobotWorld:
             return reward, terminated, truncated
 
         else:
-            r_distance = -d * distance_to_target
+            r_distance = d / distance_to_target
             r_time = -c
 
             reward = r_distance + r_time

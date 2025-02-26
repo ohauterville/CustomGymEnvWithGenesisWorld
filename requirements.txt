@@ -4,3 +4,5 @@ genesis-world
 stable_baselines3
 tensorboard
 torch
+ray[tune]
+optuna
