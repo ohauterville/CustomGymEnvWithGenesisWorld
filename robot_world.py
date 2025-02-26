@@ -17,7 +17,7 @@ class RobotWorld:
                 show_viewer=False,
                 show_FPS=False,
                 rigid_options=gs.options.RigidOptions(
-                    dt=0.01,
+                    # dt=0.01,
                 ),
             )
 
@@ -44,7 +44,7 @@ class RobotWorld:
         )
 
         # The target
-        self.target_pos = [0.5, 0.5, 0.1]
+        self.target_pos = self.generate_target_pos()
 
         self.target = self.scene.add_entity(
             gs.morphs.Box(pos=self.target_pos, size=(0.1, 0.1, 0.1))
@@ -122,7 +122,7 @@ class RobotWorld:
                 [self.robot_entity.get_dofs_position().cpu().numpy(), self.target_pos]
             )
 
-    def compute_reward_function(self, threshold=0.1, max_reward=500.0, c=0.001, d=1):
+    def compute_reward_function(self, threshold=0.05, max_reward=500.0, c=0.01, d=1):
         # if n_envs > 1, change,  to do
         last_link_pos = self.robot_entity.get_links_pos()[-1, :].cpu().numpy()
 
@@ -132,7 +132,7 @@ class RobotWorld:
         truncated = False
 
         if distance_to_target < threshold:
-            success_reward = max_reward * (1 - self.current_step / self.max_steps)
+            success_reward = max_reward  # * (1 - self.current_step / self.max_steps)
             reward = success_reward
             terminated = True
             return reward, terminated, truncated
@@ -146,6 +146,16 @@ class RobotWorld:
                 truncated = True
 
             return reward, terminated, truncated
+
+    def generate_target_pos(self):
+        z = 0
+        dist = 0
+
+        while dist < 0.3:
+            xy = np.random.uniform(low=-1.0, high=1.0, size=2)
+            dist = np.sqrt(np.power(xy[0], 2) + np.power(xy[1], 2))
+
+        return np.array([*xy, z])
 
 
 ### Unit testing

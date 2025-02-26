@@ -39,18 +39,16 @@ class CustomEnv(gym.Env):
             low=np.concatenate(
                 [
                     self.robot_world.action_space_limits[0].cpu().numpy(),
-                    -2*np.ones(len(self.robot_world.target_pos)),
+                    -2 * np.ones(len(self.robot_world.target_pos)),
                 ]
             ),
             high=np.concatenate(
                 [
                     self.robot_world.action_space_limits[1].cpu().numpy(),
-                    2*np.ones(len(self.robot_world.target_pos)),
+                    2 * np.ones(len(self.robot_world.target_pos)),
                 ]
             ),
         )
-        print()
-        print(self.observation_space)
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed, options=options)
