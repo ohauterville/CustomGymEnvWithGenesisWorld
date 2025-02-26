@@ -3,7 +3,7 @@ from gymnasium import spaces
 from gymnasium.envs.registration import register
 from gymnasium.utils.env_checker import check_env
 
-from genesis_world import GenesisWorld
+from genesis_world import GenesisWorldEnv
 
 import os
 import numpy as np
@@ -26,7 +26,7 @@ class CustomEnv(gym.Env):
         self.render_mode = render_mode
 
         # Init
-        self.sim = GenesisWorld(render_mode=render_mode)
+        self.sim = GenesisWorldEnv(render_mode=render_mode)
 
         # Init action space
         self.action_space = spaces.Box(

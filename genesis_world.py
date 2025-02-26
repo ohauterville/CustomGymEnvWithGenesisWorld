@@ -4,7 +4,7 @@ import random
 import torch
 
 
-class GenesisWorld:
+class GenesisWorldEnv:
     def __init__(self, render_mode=None, max_steps=150):
         ########################## config #######################
 
@@ -123,7 +123,7 @@ class GenesisWorld:
                 [self.robot_entity.get_dofs_position().cpu().numpy(), self.target_pos]
             )
 
-    def compute_reward_function(self, threshold=0.05, max_reward=500.0, c=0.1, d=2):
+    def compute_reward_function(self, threshold=0.1, max_reward=500.0, c=0.1, d=2):
         # if n_envs > 1, change,  to do
         last_link_pos = self.robot_entity.get_links_pos()[-1, :].cpu().numpy()
 
