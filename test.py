@@ -3,23 +3,23 @@ from stable_baselines3 import A2C, PPO, TD3
 import os
 import custom_env  # Even though we don't use this class here, we should include it here so that it registers the WarehouseRobot environment.
 
+
 # Test using StableBaseline3. Lots of hardcoding for simplicity.
 def test_sb3(
     env_name="CustomEnv-v0",
-    run_name="run_0",
-    episode_to_load=1000,
+    model_to_load="run_0",
+    episode_to_load=25000,
     nb_tests=1,
     render=True,
 ):
     # Where to load the trained model and logs
-    model_dir = os.path.join("models", run_name)
-    log_dir = os.path.join("logs", run_name)
+    model_dir = os.path.join("models", model_to_load)
 
     env = gym.make(env_name, render_mode="human" if render else None)
 
     # Load model
     model = TD3.load(
-        os.path.join(model_dir, f"{run_name}_{episode_to_load}"),
+        os.path.join(model_dir, f"{model_to_load}_{episode_to_load}"),
         env=env,
     )
 
@@ -45,4 +45,8 @@ def test_sb3(
 if __name__ == "__main__":
     env_name = "CustomEnv-v0"
 
-    test_sb3(env_name=env_name, run_name="TD3_run0", episode_to_load=1200000)
+    test_sb3(
+        env_name=env_name,
+        model_to_load="TD3_learning_starts_100",
+        episode_to_load=25000,
+    )

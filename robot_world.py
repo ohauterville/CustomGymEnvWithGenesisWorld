@@ -9,7 +9,8 @@ class RobotWorld:
         ########################## config #######################
 
         ########################## init ##########################
-        gs.init(backend=gs.gpu)
+        if not gs._initialized:  # Prevent re-initialization
+            gs.init(backend=gs.gpu)
 
         ########################## create a scene ##########################
         if render_mode == None:
