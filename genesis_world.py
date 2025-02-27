@@ -13,6 +13,7 @@ class GenesisWorldEnv:
             gs.init(backend=gs.gpu)
 
         ########################## create a scene ##########################
+        self.mode = "train"
         if render_mode == None:
             self.scene = gs.Scene(
                 show_viewer=False,
@@ -23,6 +24,7 @@ class GenesisWorldEnv:
             )
 
         elif render_mode == "human":
+            self.mode = "test"
             self.scene = gs.Scene(
                 show_viewer=True,
                 show_FPS=False,
@@ -30,7 +32,7 @@ class GenesisWorldEnv:
                     camera_pos=(3.5, -1.0, 2.5),
                     camera_lookat=(0.0, 0.0, 0.5),
                     camera_fov=40,
-                    max_FPS=30,
+                    max_FPS=20,
                 ),
                 rigid_options=gs.options.RigidOptions(
                     dt=0.01,
@@ -73,9 +75,16 @@ class GenesisWorldEnv:
         ]
 
         self.current_step = 0
-        self.max_steps = max_steps  # max_steps per episodes
+        self.collision_counts = 0
 
         #### learning params
+        self.max_steps = max_steps  # max_steps per episodes
+        self.min_dist_task_completion = 0.2
+        self.distance_weight = 1
+        self.task_completion_reward = 10
+        self.time_penalty = 10
+        self.collision_penalty = 10
+        self.max_collisions = 2
 
         ########################## build ##########################
         self.n_envs = 1  # stick to 1 for now
@@ -119,27 +128,27 @@ class GenesisWorldEnv:
             ]
         )
 
-    def compute_reward_function(self, threshold=0.1, max_reward=400, c=0.1, d=0.1):
-        # if n_envs > 1, change,  to do
-        distance_to_target = self.compute_ee_target_distance()
-
+    def compute_reward_function(self):
         terminated = False
         truncated = False
+        r_distance = 0
+        r_collision = 0
+        r_end_episode = 0
+        
+        distance_to_target = self.compute_ee_target_distance()
 
-        if distance_to_target < threshold:
-            success_reward = max_reward  * (1 - self.current_step / self.max_steps)
-            reward = success_reward
+        if distance_to_target < self.min_dist_task_completion:
+            reward = self.task_completion_reward
             terminated = True
             return reward, terminated, truncated
 
         else:
-            r_distance = -d * np.exp(distance_to_target)
-            r_time = -c
+            r_distance = -self.distance_weight * distance_to_target
 
-            reward = r_distance + r_time
+            # reward = r_distance 
             if self.current_step > self.max_steps:
                 truncated = True
-                reward -= 100
+                r_end_episode = -self.time_penalty
 
             # if not self.robot_entity.get_contacts(with_entity=self.plane)["link_b"].any():
             if any(
@@ -148,8 +157,20 @@ class GenesisWorldEnv:
                     "link_b"
                 ]
             ):
-                truncated = True
-                reward -= 100
+                self.collision_counts += 1
+                r_collision = -self.collision_penalty
+
+                if self.collision_counts > self.max_collisions:
+                    truncated = True
+
+            reward = r_distance + r_collision + r_end_episode
+
+            # for testing
+            if self.mode == "test":
+                if truncated:
+                    print("\nEpisode truncated.")
+                if terminated:
+                    print("\nEpisode terminated.")
 
             return reward, terminated, truncated
 

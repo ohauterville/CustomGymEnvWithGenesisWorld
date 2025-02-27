@@ -2,6 +2,8 @@ import gymnasium as gym
 from stable_baselines3 import A2C, PPO, TD3
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
+from torch.utils.tensorboard import SummaryWriter
+import json
 
 # from torch.utils.tensorboard import SummaryWriter
 import os
@@ -23,26 +25,54 @@ def train_sb3(
     os.makedirs(model_dir, exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
 
-    # env = DummyVecEnv([lambda: Monitor(gym.make(env_name))])
+    vec_env = DummyVecEnv([lambda: Monitor(gym.make(env_name))])
     # env = gym.make(env_name)
     # env = Monitor(env)
 
-    num_envs = 1  # Number of parallel environments
-    env = DummyVecEnv([lambda: Monitor(gym.make(env_name)) for _ in range(num_envs)])  # Parallelized envs
+    # num_envs = 1  # Number of parallel environments
+    # env = DummyVecEnv([lambda: Monitor(gym.make(env_name)) for _ in range(num_envs)])  # Parallelized envs
 
     # Check environment properties
-    print("Observation Space:", env.observation_space)
-    print("Action Space:", env.action_space)
+    print("Observation Space:", vec_env.observation_space)
+    print("Action Space:", vec_env.action_space)
 
     model = PPO(
         "MlpPolicy",
-        env,
+        vec_env,
         verbose=0,
         device="cuda",
         tensorboard_log=log_dir,
         # learning_starts=model_learning_starts,
         learning_rate=model_learning_rate,
     )
+
+    writer = SummaryWriter(log_dir=log_dir) 
+    base_env = get_base_env(vec_env)
+    # Your fixed configuration dictionary
+    run_specs = {
+        "env": env_name,
+        "algorithm": "PPO",
+        "hyperparameters": {
+            "learning_rate": model.learning_rate,
+            "gamma": model.gamma,
+            "ent_coef": model.ent_coef
+        },
+        "reward_config": {
+            "max_steps": base_env.sim.max_steps,
+            "min_dist_task_completion": base_env.sim.min_dist_task_completion,
+            "distance_weight": base_env.sim.distance_weight,
+            "task_completion_reward": base_env.sim.task_completion_reward,
+            "time_penalty": base_env.sim.time_penalty,
+            "collision_penalty": base_env.sim.collision_penalty,
+            "max_collisions": base_env.sim.max_collisions,
+        },
+        "notes": "Target near floor with collision avoidance"
+    }
+
+    config_json = json.dumps(run_specs, indent=2)
+    tensorboard_text = f"```json\n{config_json}\n```"
+    writer.add_text("Run_specs", tensorboard_text)
+    writer.close()
 
     i = 0
     while learning_sessions > i:
@@ -51,7 +81,7 @@ def train_sb3(
         model.learn(total_timesteps=timesteps, reset_num_timesteps=False)  # train
         model.save(os.path.join(model_dir, f"{run_name}_{timesteps*i}"))
 
-    env.close()
+    vec_env.close()
 
 
 def tune(env_name, run_name, parameter_list, learning_sessions=1):
@@ -64,11 +94,16 @@ def tune(env_name, run_name, parameter_list, learning_sessions=1):
             learning_sessions=learning_sessions,
         )
 
+def get_base_env(vec_env, env_idx=0):
+    current_env = vec_env.envs[env_idx]
+    while hasattr(current_env, "env"):  # Unwrap all layers
+        current_env = current_env.env
+    return current_env
 
 if __name__ == "__main__":
     env_name = "CustomEnv-v0"
-    run_name = "PPO_run_0"
-    learning_sessions = 12
+    run_name = "PPO_run_2"
+    learning_sessions = 6
 
     tuning = False
 

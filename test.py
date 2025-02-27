@@ -47,6 +47,6 @@ if __name__ == "__main__":
 
     test_sb3(
         env_name=env_name,
-        model_to_load="PPO_run_0",
-        episode_to_load=500000,
+        model_to_load="PPO_run_2",
+        episode_to_load=300000,
     )
