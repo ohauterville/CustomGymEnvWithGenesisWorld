@@ -67,7 +67,7 @@ def tune(env_name, run_name, parameter_list, learning_sessions=1):
 
 if __name__ == "__main__":
     env_name = "CustomEnv-v0"
-    run_name = "PPO_run_p0"
+    run_name = "PPO_run_0"
     learning_sessions = 12
 
     tuning = False

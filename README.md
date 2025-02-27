@@ -46,3 +46,9 @@ The project aims to:
 3. **Usage**
 
     Coming soon
+
+
+## Disclaimer
+This is a personal project. There is more efficient ways to accomplish this with pretrained enviroment et predesigned tasks (ManiSkill). But my goal is to learn the details of RL for robotics so I can design more and more complex tasks and environments in the future.
+
+Olivier H.

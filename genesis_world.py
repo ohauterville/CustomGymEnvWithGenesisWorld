@@ -119,7 +119,7 @@ class GenesisWorldEnv:
             ]
         )
 
-    def compute_reward_function(self, threshold=0.1, max_reward=300, c=0.1, d=0.1):
+    def compute_reward_function(self, threshold=0.1, max_reward=400, c=0.1, d=0.1):
         # if n_envs > 1, change,  to do
         distance_to_target = self.compute_ee_target_distance()
 
@@ -139,7 +139,7 @@ class GenesisWorldEnv:
             reward = r_distance + r_time
             if self.current_step > self.max_steps:
                 truncated = True
-                reward -= 50
+                reward -= 100
 
             # if not self.robot_entity.get_contacts(with_entity=self.plane)["link_b"].any():
             if any(
