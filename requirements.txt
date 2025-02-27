@@ -1,8 +1,5 @@
-gymnasium
-numpy
-genesis-world
-stable_baselines3
-tensorboard
-torch
-ray[tune]
-optuna
+genesis_world==0.2.1
+gymnasium==1.0.0
+numpy==2.2.3
+stable_baselines3==2.5.0
+torch==2.6.0
