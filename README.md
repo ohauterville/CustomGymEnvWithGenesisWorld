@@ -45,7 +45,24 @@ The project aims to:
 
 3. **Usage**
 
-    Coming soon
+    - To train the agent:
+    ``̀ bash
+    python train.py
+    ```
+    This will create a *models* folder and a *logs* folder. The *run_id* is the 8 first digits of the file crated in these folders (the datetime as MMDDHHMM).
+
+    - To visualize the training metrics:
+    In an other terminal, run:
+    ```bash
+    tensorboard --logdir='logs' --port 6006
+    `̀̀ `
+    Click on the link.
+
+    - To test the agent:
+    ```bash
+    python test.py --run_id MMDDHHMM
+    ```
+
 
 
 ## Disclaimer
