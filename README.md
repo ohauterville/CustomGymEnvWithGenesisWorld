@@ -47,7 +47,7 @@ The project aims to:
 
     **Train** the agent:
   
-    ``̀ bash
+    ```bash
     python train.py
     ```
 
