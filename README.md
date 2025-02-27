@@ -2,6 +2,8 @@
 
 This repository demonstrates how to create a custom OpenAI Gym environment using the [Genesis-World](https://github.com/Genesis-World/Genesis-World) simulator and train reinforcement learning agents to perform specific tasks using [Stable-Baselines3](https://stable-baselines3.readthedocs.io/).
 
+![Alt text](images/env.png)
+
 ## Overview
 
 The project aims to:
