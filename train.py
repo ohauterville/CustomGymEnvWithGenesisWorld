@@ -7,6 +7,8 @@ import json
 
 # from torch.utils.tensorboard import SummaryWriter
 import os
+from datetime import datetime
+
 import custom_env  # Even though we don't use this class here, we should include it here so that it registers the environment.
 
 
@@ -46,27 +48,28 @@ def train_sb3(
         learning_rate=model_learning_rate,
     )
 
-    writer = SummaryWriter(log_dir=log_dir) 
+    writer = SummaryWriter(log_dir=log_dir)
     base_env = get_base_env(vec_env)
     # Your fixed configuration dictionary
     run_specs = {
         "env": env_name,
+        "run_name": run_name,
         "algorithm": "PPO",
         "hyperparameters": {
             "learning_rate": model.learning_rate,
             "gamma": model.gamma,
-            "ent_coef": model.ent_coef
+            "ent_coef": model.ent_coef,
         },
         "reward_config": {
             "max_steps": base_env.sim.max_steps,
             "min_dist_task_completion": base_env.sim.min_dist_task_completion,
             "distance_weight": base_env.sim.distance_weight,
             "task_completion_reward": base_env.sim.task_completion_reward,
-            "time_penalty": base_env.sim.time_penalty,
-            "collision_penalty": base_env.sim.collision_penalty,
+            "time_reward": base_env.sim.end_ep_reward,
+            "collision_reward": base_env.sim.collision_reward,
             "max_collisions": base_env.sim.max_collisions,
         },
-        "notes": "Target near floor with collision avoidance"
+        "notes": "Target near floor with collision avoidance",
     }
 
     config_json = json.dumps(run_specs, indent=2)
@@ -94,15 +97,20 @@ def tune(env_name, run_name, parameter_list, learning_sessions=1):
             learning_sessions=learning_sessions,
         )
 
+
 def get_base_env(vec_env, env_idx=0):
     current_env = vec_env.envs[env_idx]
     while hasattr(current_env, "env"):  # Unwrap all layers
         current_env = current_env.env
     return current_env
 
+
 if __name__ == "__main__":
+    now = datetime.now()
+    formatted_time = now.strftime("%m%d%H%M")
+
     env_name = "CustomEnv-v0"
-    run_name = "PPO_run_2"
+    run_name = formatted_time + "_PPO"
     learning_sessions = 6
 
     tuning = False

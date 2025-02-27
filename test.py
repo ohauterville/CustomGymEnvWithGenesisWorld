@@ -1,6 +1,9 @@
 import gymnasium as gym
 from stable_baselines3 import A2C, PPO, TD3
+
 import os
+import argparse
+
 import custom_env  # Even though we don't use this class here, we should include it here so that it registers the WarehouseRobot environment.
 
 
@@ -8,8 +11,8 @@ import custom_env  # Even though we don't use this class here, we should include
 def test_sb3(
     env_name="CustomEnv-v0",
     model_to_load="run_0",
-    episode_to_load=25000,
-    nb_tests=2,
+    episode_to_load=50000,
+    nb_tests=1,
     render=True,
 ):
     # Where to load the trained model and logs
@@ -43,10 +46,21 @@ def test_sb3(
 
 
 if __name__ == "__main__":
+    # Create the parser
+    parser = argparse.ArgumentParser(description="Process a string input.")
+
+    # Add an argument for the string
+    parser.add_argument("--run_id", type=str, required=True, help="run_id MMDDHHMM")
+
+    # Parse the arguments
+    args = parser.parse_args()
+
     env_name = "CustomEnv-v0"
+    # run_name = args.run_id + "_PPO"
+    run_name = "PPO_run_1"
 
     test_sb3(
         env_name=env_name,
-        model_to_load="PPO_run_2",
-        episode_to_load=300000,
+        model_to_load=run_name,
+        episode_to_load=250000,
     )

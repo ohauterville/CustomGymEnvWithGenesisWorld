@@ -5,7 +5,7 @@ import torch
 
 
 class GenesisWorldEnv:
-    def __init__(self, render_mode=None, max_steps=300):
+    def __init__(self, render_mode=None, max_steps=1000):
         ########################## config #######################
 
         ########################## init ##########################
@@ -19,7 +19,7 @@ class GenesisWorldEnv:
                 show_viewer=False,
                 show_FPS=False,
                 rigid_options=gs.options.RigidOptions(
-                    # dt=0.01,
+                    dt=0.01,
                 ),
             )
 
@@ -82,9 +82,9 @@ class GenesisWorldEnv:
         self.min_dist_task_completion = 0.2
         self.distance_weight = 1
         self.task_completion_reward = 10
-        self.time_penalty = 10
-        self.collision_penalty = 10
-        self.max_collisions = 2
+        self.end_ep_reward = -10
+        self.collision_reward = -10
+        self.max_collisions = 0
 
         ########################## build ##########################
         self.n_envs = 1  # stick to 1 for now
@@ -92,7 +92,7 @@ class GenesisWorldEnv:
 
         ########################## get info #########################
         self.action_space_limits = self.robot_entity.get_dofs_limit()
-        # self.observations_dims = 9
+        print(f"\nThe max time duration of an episode: {self.max_steps*self.scene.rigid_options.dt}\n")
 
     def step(self, action):
         self.robot_entity.control_dofs_velocity(action)
@@ -131,48 +131,47 @@ class GenesisWorldEnv:
     def compute_reward_function(self):
         terminated = False
         truncated = False
+        r_success = 0
         r_distance = 0
         r_collision = 0
         r_end_episode = 0
-        
+
+        ##### r_distance #####
         distance_to_target = self.compute_ee_target_distance()
+        r_distance = -self.distance_weight * np.power(distance_to_target, 2)
 
-        if distance_to_target < self.min_dist_task_completion:
-            reward = self.task_completion_reward
-            terminated = True
-            return reward, terminated, truncated
+        ##### r_time ####
+        if self.current_step > self.max_steps:
+            truncated = True
+            r_end_episode = self.end_ep_reward
 
-        else:
-            r_distance = -self.distance_weight * distance_to_target
+        ##### r_collision #####
+        if any(
+            x > 4
+            for x in self.robot_entity.get_contacts(with_entity=self.plane)["link_b"]
+        ):
+            self.collision_counts += 1
+            r_collision = self.collision_reward
 
-            # reward = r_distance 
-            if self.current_step > self.max_steps:
+            if self.collision_counts > self.max_collisions:
                 truncated = True
-                r_end_episode = -self.time_penalty
 
-            # if not self.robot_entity.get_contacts(with_entity=self.plane)["link_b"].any():
-            if any(
-                x > 4
-                for x in self.robot_entity.get_contacts(with_entity=self.plane)[
-                    "link_b"
-                ]
-            ):
-                self.collision_counts += 1
-                r_collision = -self.collision_penalty
+        ##### r_success #####
+        if distance_to_target < self.min_dist_task_completion and not truncated:
+            r_success = self.task_completion_reward
+            terminated = True
 
-                if self.collision_counts > self.max_collisions:
-                    truncated = True
+        ##### rewards #######
+        reward = r_success + r_distance + r_collision + r_end_episode
 
-            reward = r_distance + r_collision + r_end_episode
+        #################### for testing ################
+        if self.mode == "test":
+            if truncated:
+                print("\nEpisode truncated.")
+            if terminated:
+                print("\nEpisode terminated.")
 
-            # for testing
-            if self.mode == "test":
-                if truncated:
-                    print("\nEpisode truncated.")
-                if terminated:
-                    print("\nEpisode terminated.")
-
-            return reward, terminated, truncated
+        return reward, terminated, truncated
 
     def compute_ee_target_distance(self):
         last_link_pos = self.robot_entity.get_links_pos()[-1, :].cpu().numpy()
