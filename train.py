@@ -18,7 +18,7 @@ def train_sb3(
     model_learning_rate=0.001,
     timesteps=50000,
     learning_sessions=1,
-    model_learning_starts=1000,
+    # model_learning_starts=1000,
 ):
 
     # Where to store trained model and logs

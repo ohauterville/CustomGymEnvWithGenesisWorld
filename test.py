@@ -51,16 +51,17 @@ if __name__ == "__main__":
 
     # Add an argument for the string
     parser.add_argument("--run_id", type=str, required=True, help="run_id MMDDHHMM")
+    parser.add_argument("--episode", type=int, default=300000, required=False, help="episode to test x*50000")
 
     # Parse the arguments
     args = parser.parse_args()
 
     env_name = "CustomEnv-v0"
-    # run_name = args.run_id + "_PPO"
-    run_name = "PPO_run_1"
+    run_name = args.run_id + "_PPO"
+    episode = args.episode
 
     test_sb3(
         env_name=env_name,
         model_to_load=run_name,
-        episode_to_load=250000,
+        episode_to_load=episode,
     )

@@ -80,7 +80,7 @@ class GenesisWorldEnv:
         #### learning params
         self.max_steps = max_steps  # max_steps per episodes
         self.min_dist_task_completion = 0.2
-        self.distance_weight = 1
+        self.distance_weight = 0.1
         self.task_completion_reward = 10
         self.end_ep_reward = -10
         self.collision_reward = -10
@@ -138,7 +138,7 @@ class GenesisWorldEnv:
 
         ##### r_distance #####
         distance_to_target = self.compute_ee_target_distance()
-        r_distance = -self.distance_weight * np.power(distance_to_target, 2)
+        r_distance = -self.distance_weight * distance_to_target
 
         ##### r_time ####
         if self.current_step > self.max_steps:
