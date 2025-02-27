@@ -5,7 +5,7 @@ import torch
 
 
 class GenesisWorldEnv:
-    def __init__(self, render_mode=None, max_steps=300):
+    def __init__(self, render_mode=None, max_steps=300, n_envs=2):
         ########################## config #######################
 
         ########################## init ##########################
@@ -47,8 +47,9 @@ class GenesisWorldEnv:
 
         # The target
         self.target_pos = self.generate_target_pos(self.env_size)
+        # self.target_pos = [0.5, 0.4, 0.05]
         self.target = self.scene.add_entity(
-            gs.morphs.Box(pos=self.target_pos, size=(0.05, 0.05, 0.05))
+            gs.morphs.Box(pos=self.target_pos.cpu().numpy(), size=(0.05, 0.05, 0.05))
         )
 
         self.robot_entity = self.scene.add_entity(
@@ -78,14 +79,15 @@ class GenesisWorldEnv:
         #### learning params
 
         ########################## build ##########################
-        self.n_envs = 1  # stick to 1 for now
-        self.scene.build()
+        self.n_envs = n_envs  # stick to 1 for now
+        self.scene.build(n_envs=n_envs, env_spacing=(2*self.env_size, 2*self.env_size))
 
         ########################## get info #########################
         self.action_space_limits = self.robot_entity.get_dofs_limit()
         # self.observations_dims = 9
 
     def step(self, action):
+        action = torch.tensor(action, device=gs.device, dtype=torch.float32)  # Convert NumPy → PyTorch
         self.robot_entity.control_dofs_velocity(action)
         self.scene.step()
         next_obs = self.get_observation()
@@ -97,10 +99,10 @@ class GenesisWorldEnv:
         # info
         info = {}
 
-        return next_obs, reward, terminated, truncated, info
+        return next_obs.cpu().numpy(), reward, terminated, truncated, info
 
     def reset(self, seed=None):
-        self.robot_entity.set_dofs_velocity(np.zeros(len(self.dofs_idx)))
+        self.robot_entity.set_dofs_velocity(torch.zeros(len(self.dofs_idx), device=gs.device))
 
         random.seed(seed)
 
@@ -108,16 +110,19 @@ class GenesisWorldEnv:
         obs = self.get_observation()
         self.current_step = 0
         info = {}
-        return obs, info
+
+        return obs[0, :].cpu().numpy(), info
 
     def get_observation(self):
-        return np.concatenate(
-            [
-                self.robot_entity.get_links_pos()[-1, :].cpu().numpy(),
-                self.robot_entity.get_dofs_velocity().cpu().numpy(),
-                self.target.get_pos().cpu().numpy(),
-            ]
-        )
+        obs = torch.cat(
+                [
+                    self.robot_entity.get_links_pos()[:, -1, :], # dims = [n_envs, n_links, 3]
+                    self.robot_entity.get_dofs_velocity(),
+                    self.target.get_pos(),
+                ], dim=1
+            ).to(gs.device)
+
+        return obs
 
     def compute_reward_function(self, threshold=0.1, max_reward=300, c=0.1, d=0.1):
         # if n_envs > 1, change,  to do
@@ -127,45 +132,42 @@ class GenesisWorldEnv:
         truncated = False
 
         if distance_to_target < threshold:
-            success_reward = max_reward  * (1 - self.current_step / self.max_steps)
-            reward = success_reward
+            reward = max_reward #* (1 - self.current_step / self.max_steps)
             terminated = True
             return reward, terminated, truncated
 
         else:
-            r_distance = -d * np.exp(distance_to_target)
+            r_distance = -d*torch.exp(distance_to_target)
             r_time = -c
 
             reward = r_distance + r_time
             if self.current_step > self.max_steps:
                 truncated = True
-                reward -= 50
+                # reward -= 50
 
-            # if not self.robot_entity.get_contacts(with_entity=self.plane)["link_b"].any():
-            if any(
-                x > 4
-                for x in self.robot_entity.get_contacts(with_entity=self.plane)[
-                    "link_b"
-                ]
-            ):
+            contacts = torch.tensor(
+                self.robot_entity.get_contacts(with_entity=self.plane)["link_b"],
+                dtype=torch.float32
+            )
+            if torch.any(contacts > 4):
                 truncated = True
                 reward -= 100
 
             return reward, terminated, truncated
 
     def compute_ee_target_distance(self):
-        last_link_pos = self.robot_entity.get_links_pos()[-1, :].cpu().numpy()
-        return np.linalg.norm(last_link_pos - self.target.get_pos().cpu().numpy())
+        last_link_pos = self.robot_entity.get_links_pos()[:, -1, :]
+        return torch.norm(last_link_pos - self.target.get_pos())
 
     def generate_target_pos(self, env_size):
         z = 0
         dist = 0
 
         while dist < 0.2:
-            xy = np.random.uniform(low=-env_size, high=env_size, size=2)
-            dist = np.sqrt(np.power(xy[0], 2) + np.power(xy[1], 2))
+            xy = (2 * env_size) * torch.rand(2, device=gs.device) - env_size  # Torch equivalent of np.uniform
+            dist = torch.norm(xy)  # Torch equivalent of np.sqrt(x^2 + y^2)
 
-        return np.array([*xy, z])
+        return torch.cat((xy, torch.tensor([z], device=gs.device)))
 
 
 ### Unit testing

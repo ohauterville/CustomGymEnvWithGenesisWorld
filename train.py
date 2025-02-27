@@ -22,7 +22,13 @@ def train_sb3(
     log_dir = os.path.join("logs", run_name)
     os.makedirs(model_dir, exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
-    env = DummyVecEnv([lambda: Monitor(gym.make(env_name))])
+
+    # env = DummyVecEnv([lambda: Monitor(gym.make(env_name))])
+    # env = gym.make(env_name)
+    # env = Monitor(env)
+
+    num_envs = 1  # Number of parallel environments
+    env = DummyVecEnv([lambda: Monitor(gym.make(env_name)) for _ in range(num_envs)])  # Parallelized envs
 
     # Check environment properties
     print("Observation Space:", env.observation_space)
@@ -61,7 +67,7 @@ def tune(env_name, run_name, parameter_list, learning_sessions=1):
 
 if __name__ == "__main__":
     env_name = "CustomEnv-v0"
-    run_name = "PPO_run_r0"
+    run_name = "PPO_run_p0"
     learning_sessions = 12
 
     tuning = False

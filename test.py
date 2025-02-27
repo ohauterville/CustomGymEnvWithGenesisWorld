@@ -9,7 +9,7 @@ def test_sb3(
     env_name="CustomEnv-v0",
     model_to_load="run_0",
     episode_to_load=25000,
-    nb_tests=4,
+    nb_tests=2,
     render=True,
 ):
     # Where to load the trained model and logs
@@ -32,7 +32,7 @@ def test_sb3(
 
         while True:
             action, _ = model.predict(
-                observation=obs, deterministic=False
+                observation=obs, deterministic=True
             )  # Turn on deterministic, so predict always returns the same behavior
             obs, reward, terminated, truncated, _ = env.step(action)
             score += reward
@@ -47,6 +47,6 @@ if __name__ == "__main__":
 
     test_sb3(
         env_name=env_name,
-        model_to_load="PPO_run_d0",
-        episode_to_load=1000000,
+        model_to_load="PPO_run_0",
+        episode_to_load=500000,
     )
