@@ -4,6 +4,9 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
 from torch.utils.tensorboard import SummaryWriter
 import json
+import sys
+import argparse
+
 
 # from torch.utils.tensorboard import SummaryWriter
 import os
@@ -15,8 +18,9 @@ import custom_env  # Even though we don't use this class here, we should include
 def train_sb3(
     env_name="CustomEnv-v0",
     run_name="run_0",
+    model_name="PPO",
     model_learning_rate=0.001,
-    timesteps=50000,
+    timesteps=100000,
     learning_sessions=1,
     # model_learning_starts=1000,
 ):
@@ -26,6 +30,8 @@ def train_sb3(
     log_dir = os.path.join("logs", run_name)
     os.makedirs(model_dir, exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
+
+    print(f"\nThe run name is:\n\n{run_name}\n")
 
     vec_env = DummyVecEnv([lambda: Monitor(gym.make(env_name))])
     # env = gym.make(env_name)
@@ -38,15 +44,28 @@ def train_sb3(
     print("Observation Space:", vec_env.observation_space)
     print("Action Space:", vec_env.action_space)
 
-    model = PPO(
-        "MlpPolicy",
-        vec_env,
-        verbose=0,
-        device="cuda",
-        tensorboard_log=log_dir,
-        # learning_starts=model_learning_starts,
-        learning_rate=model_learning_rate,
-    )
+    if model_name == "PPO":
+        model = PPO(
+            "MlpPolicy",
+            vec_env,
+            verbose=0,
+            device="cuda",
+            tensorboard_log=log_dir,
+            learning_rate=model_learning_rate,
+        )
+    elif model_name == "TD3":
+        model = TD3(
+            "MlpPolicy",
+            vec_env,
+            verbose=0,
+            device="cuda",
+            tensorboard_log=log_dir,
+            learning_rate=model_learning_rate,
+        )
+    else:
+        model = None
+        print(f"Error. Model {model_name} not implemented.\nExiting.")
+        sys.exit
 
     writer = SummaryWriter(log_dir=log_dir)
     base_env = get_base_env(vec_env)
@@ -54,11 +73,10 @@ def train_sb3(
     run_specs = {
         "env": env_name,
         "run_name": run_name,
-        "algorithm": "PPO",
+        "algorithm": model_name,
         "hyperparameters": {
             "learning_rate": model.learning_rate,
             "gamma": model.gamma,
-            "ent_coef": model.ent_coef,
         },
         "reward_config": {
             "max_steps": base_env.sim.max_steps,
@@ -85,17 +103,7 @@ def train_sb3(
         model.save(os.path.join(model_dir, f"{run_name}_{timesteps*i}"))
 
     vec_env.close()
-
-
-def tune(env_name, run_name, parameter_list, learning_sessions=1):
-    for _param_ in parameter_list:
-        run_name_param = run_name + str(_param_)
-        train_sb3(
-            env_name=env_name,
-            run_name=run_name_param,
-            model_learning_starts=_param_,
-            learning_sessions=learning_sessions,
-        )
+    print(f"\nThe run name is:\n\n{run_name}\n")
 
 
 def get_base_env(vec_env, env_idx=0):
@@ -106,28 +114,25 @@ def get_base_env(vec_env, env_idx=0):
 
 
 if __name__ == "__main__":
+    # Create the parser
+    parser = argparse.ArgumentParser()
+
+    # Add an argument for the string
+    parser.add_argument("--model", type=str, default="TD3", help="TD3 or PPO")
+    args = parser.parse_args()
+
+    model_name = args.model
+
     now = datetime.now()
     formatted_time = now.strftime("%m%d%H%M")
 
     env_name = "CustomEnv-v0"
-    run_name = formatted_time + "_PPO"
-    learning_sessions = 6
+    run_name = formatted_time + "_" + model_name
+    learning_sessions = 10
 
-    tuning = False
-
-    if tuning:
-        parameter_list = [50, 100]
-        run_name = run_name + "_learning_starts_"
-
-        tune(
-            env_name=env_name,
-            run_name=run_name,
-            parameter_list=parameter_list,
-            learning_sessions=learning_sessions,
-        )
-    else:
-        train_sb3(
-            env_name=env_name,
-            run_name=run_name,
-            learning_sessions=learning_sessions,
-        )
+    train_sb3(
+        env_name=env_name,
+        run_name=run_name,
+        learning_sessions=learning_sessions,
+        model_name=model_name,
+    )

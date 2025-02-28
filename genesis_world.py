@@ -32,7 +32,7 @@ class GenesisWorldEnv:
                     camera_pos=(3.5, -1.0, 2.5),
                     camera_lookat=(0.0, 0.0, 0.5),
                     camera_fov=40,
-                    max_FPS=20,
+                    max_FPS=60,
                 ),
                 rigid_options=gs.options.RigidOptions(
                     dt=0.01,
@@ -79,12 +79,12 @@ class GenesisWorldEnv:
 
         #### learning params
         self.max_steps = max_steps  # max_steps per episodes
-        self.min_dist_task_completion = 0.2
-        self.distance_weight = 0.1
-        self.task_completion_reward = 10
+        self.min_dist_task_completion = 0.1
+        self.distance_weight = 0.5
+        self.task_completion_reward = 30
         self.end_ep_reward = -10
         self.collision_reward = -10
-        self.max_collisions = 0
+        self.max_collisions = 30 # if negative, the collision detection is not active
 
         ########################## build ##########################
         self.n_envs = 1  # stick to 1 for now
@@ -92,7 +92,9 @@ class GenesisWorldEnv:
 
         ########################## get info #########################
         self.action_space_limits = self.robot_entity.get_dofs_limit()
-        print(f"\nThe max time duration of an episode: {self.max_steps*self.scene.rigid_options.dt}\n")
+        print(
+            f"\nThe max time duration of an episode: {self.max_steps*self.scene.rigid_options.dt}\n"
+        )
 
     def step(self, action):
         self.robot_entity.control_dofs_velocity(action)
@@ -135,6 +137,7 @@ class GenesisWorldEnv:
         r_distance = 0
         r_collision = 0
         r_end_episode = 0
+        r_height = 0
 
         ##### r_distance #####
         distance_to_target = self.compute_ee_target_distance()
@@ -146,18 +149,22 @@ class GenesisWorldEnv:
             r_end_episode = self.end_ep_reward
 
         ##### r_collision #####
-        if any(
-            x > 4
-            for x in self.robot_entity.get_contacts(with_entity=self.plane)["link_b"]
-        ):
-            self.collision_counts += 1
-            r_collision = self.collision_reward
+        if self.max_collisions >= 0:
+            if any(
+                x > 4
+                for x in self.robot_entity.get_contacts(with_entity=self.plane)["link_b"]
+            ):
+                self.collision_counts += 1
+                r_collision = self.collision_reward
+                if self.mode == "test":
+                    print("Collision!")
 
-            if self.collision_counts > self.max_collisions:
-                truncated = True
+                
+                if self.collision_counts > self.max_collisions:
+                    truncated = True
 
         ##### r_success #####
-        if distance_to_target < self.min_dist_task_completion and not truncated:
+        if distance_to_target < self.min_dist_task_completion and not truncated and not self.collision_counts > self.max_collisions:
             r_success = self.task_completion_reward
             terminated = True
 
@@ -174,14 +181,19 @@ class GenesisWorldEnv:
         return reward, terminated, truncated
 
     def compute_ee_target_distance(self):
-        last_link_pos = self.robot_entity.get_links_pos()[-1, :].cpu().numpy()
-        return np.linalg.norm(last_link_pos - self.target.get_pos().cpu().numpy())
+        return np.linalg.norm(self.get_ee_pos() - self.target.get_pos().cpu().numpy())
+    
+    def get_ee_pos(self):
+        return (
+            self.robot_entity.get_links_pos()[-1, :].cpu().numpy()
+            + self.robot_entity.get_links_pos()[-2, :].cpu().numpy()
+        ) / 2
 
     def generate_target_pos(self, env_size):
         z = 0
         dist = 0
 
-        while dist < 0.2:
+        while dist < 0.4:
             xy = np.random.uniform(low=-env_size, high=env_size, size=2)
             dist = np.sqrt(np.power(xy[0], 2) + np.power(xy[1], 2))
 
