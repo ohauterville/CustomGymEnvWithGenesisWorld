@@ -91,6 +91,7 @@ class GenesisWorldEnv:
         self.scene.build()
 
         ########################## get info #########################
+        self.episode_count = 0
         self.action_space_limits = self.robot_entity.get_dofs_limit()
         print(
             f"\nThe max time duration of an episode: {self.max_steps*self.scene.rigid_options.dt}\n"
@@ -111,7 +112,11 @@ class GenesisWorldEnv:
         return next_obs, reward, terminated, truncated, info
 
     def reset(self, seed=None):
-        self.robot_entity.set_dofs_velocity(np.zeros(len(self.dofs_idx)))
+        # Add episode counter
+        if hasattr(self, 'episode_count'):
+            self.episode_count += 1
+        else:
+            self.episode_count = 0
 
         random.seed(seed)
 
@@ -126,6 +131,7 @@ class GenesisWorldEnv:
             [
                 self.robot_entity.get_links_pos()[-1, :].cpu().numpy(),
                 self.robot_entity.get_dofs_velocity().cpu().numpy(),
+                self.robot_entity.get_dofs_position().cpu().numpy(),
                 self.target.get_pos().cpu().numpy(),
             ]
         )
@@ -133,51 +139,61 @@ class GenesisWorldEnv:
     def compute_reward_function(self):
         terminated = False
         truncated = False
-        r_success = 0
-        r_distance = 0
-        r_collision = 0
-        r_end_episode = 0
-        r_height = 0
-
-        ##### r_distance #####
+        
+        # Calculate distance to target
         distance_to_target = self.compute_ee_target_distance()
-        r_distance = -self.distance_weight * distance_to_target
-
-        ##### r_time ####
+        
+        # Progress reward (improvement in distance)
+        prev_distance = getattr(self, 'last_distance', distance_to_target)
+        progress = prev_distance - distance_to_target
+        r_progress = 10.0 * progress  # Stronger incentive for progress
+        self.last_distance = distance_to_target
+        
+        # Shaped distance reward (exponential penalty for distance)
+        r_distance = -self.distance_weight * (distance_to_target**2)
+        
+        # Energy efficiency reward
+        velocity = self.robot_entity.get_dofs_velocity().cpu().numpy()
+        r_energy = -0.01 * np.sum(np.square(velocity))
+        
+        # Height maintenance reward (keep end effector at reasonable height)
+        ee_height = self.get_ee_pos()[2]
+        r_height = -0.1 * abs(ee_height - 0.5)  # Encourage height around 0.5
+        
+        # Time penalty
+        r_time = -0.1  # Small penalty for each timestep to encourage efficiency
+        
+        # Success reward
+        r_success = 0
+        if distance_to_target < self.min_dist_task_completion:
+            r_success = self.task_completion_reward
+            terminated = True
+        
+        # Collision penalty
+        r_collision = 0
+        if self.max_collisions >= 0:
+            if any(x > 4 for x in self.robot_entity.get_contacts(with_entity=self.plane)["link_b"]):
+                self.collision_counts += 1
+                r_collision = self.collision_reward
+                if self.collision_counts > self.max_collisions:
+                    truncated = True
+        
+        # End of episode handling
+        r_end_episode = 0
         if self.current_step > self.max_steps:
             truncated = True
             r_end_episode = self.end_ep_reward
-
-        ##### r_collision #####
-        if self.max_collisions >= 0:
-            if any(
-                x > 4
-                for x in self.robot_entity.get_contacts(with_entity=self.plane)["link_b"]
-            ):
-                self.collision_counts += 1
-                r_collision = self.collision_reward
-                if self.mode == "test":
-                    print("Collision!")
-
-                
-                if self.collision_counts > self.max_collisions:
-                    truncated = True
-
-        ##### r_success #####
-        if distance_to_target < self.min_dist_task_completion and not truncated and not self.collision_counts > self.max_collisions:
-            r_success = self.task_completion_reward
-            terminated = True
-
-        ##### rewards #######
-        reward = r_success + r_distance + r_collision + r_end_episode
-
-        #################### for testing ################
+        
+        # Combine all rewards
+        reward = r_success + r_distance + r_progress + r_energy + r_collision + r_end_episode + r_time + r_height
+    
+        # Debug info for testing
         if self.mode == "test":
             if truncated:
                 print("\nEpisode truncated.")
             if terminated:
                 print("\nEpisode terminated.")
-
+                
         return reward, terminated, truncated
 
     def compute_ee_target_distance(self):
@@ -190,14 +206,22 @@ class GenesisWorldEnv:
         ) / 2
 
     def generate_target_pos(self, env_size):
-        z = 0
-        dist = 0
-
-        while dist < 0.4:
+        if self.mode == "train":
+            # During training, gradually increase difficulty
+            episode_num = getattr(self, 'episode_count', 0)
+            min_dist = 0.2 + min(0.2, (episode_num / 1000) * 0.2)  # Gradually increase min distance
+            max_dist = 0.3 + min(0.3, (episode_num / 1000) * 0.3)  # Gradually increase max distance
+        else:
+            min_dist = 0.4
+            max_dist = env_size
+            
+        while True:
             xy = np.random.uniform(low=-env_size, high=env_size, size=2)
             dist = np.sqrt(np.power(xy[0], 2) + np.power(xy[1], 2))
-
-        return np.array([*xy, z])
+            if min_dist < dist < max_dist:
+                break
+                
+        return np.array([*xy, 0])
 
 
 ### Unit testing
