@@ -13,10 +13,10 @@ def test_sb3(
     env_name="CustomEnv-v0",
     model_to_load="run_0",
     model_name="TD3",
-    episode_to_load=50000,
+    episode_to_load=100000,
     nb_tests=1,
     render=True,
-    seed=None
+    seed=None,
 ):
     # Where to load the trained model and logs
     model_dir = os.path.join("models", model_to_load)
@@ -67,7 +67,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--episode",
         type=int,
-        default=300000,
+        default=100000,
         required=False,
         help="episode to test, every i*100000",
     )
@@ -85,7 +85,7 @@ if __name__ == "__main__":
     test_sb3(
         env_name=env_name,
         model_to_load=run_name,
-        model_name = model_name,
+        model_name=model_name,
         episode_to_load=episode,
         seed=seed,
     )

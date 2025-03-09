@@ -52,6 +52,7 @@ def train_sb3(
             device="cuda",
             tensorboard_log=log_dir,
             learning_rate=model_learning_rate,
+            ent_coef=0.01,
         )
     elif model_name == "TD3":
         model = TD3(

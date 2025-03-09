@@ -5,6 +5,7 @@ python delete.py --run_name $RUNNAME
 
 Usually run_name looks like 02281200_PPO (date of the run in MMDDHHMM + _ai_model)
 """
+
 import os
 import shutil
 import argparse

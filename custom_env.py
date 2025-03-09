@@ -29,27 +29,34 @@ class CustomEnv(gym.Env):
         self.sim = GenesisWorldEnv(render_mode=render_mode)
 
         # Init action space
+        self.dofs_velocity_limit = 1.0  # arbitrary
         self.action_space = spaces.Box(
-            low=self.sim.action_space_limits[0].cpu().numpy(),
-            high=self.sim.action_space_limits[1].cpu().numpy(),
+            low=-self.dofs_velocity_limit * np.ones(9),
+            high=self.dofs_velocity_limit * np.ones(9),
         )
+
+        print("Action space boundaries:")
+        print(self.action_space.low)
+        print(self.action_space.high)
 
         # Init obs space
         self.observation_space = spaces.Box(
             low=np.concatenate(
                 [
-                    -2 * self.sim.env_size * np.ones(3),  # ee pos
                     self.sim.action_space_limits[0].cpu().numpy(),
-                    self.sim.action_space_limits[0].cpu().numpy(),
-                    -2 * self.sim.env_size * np.ones(3),  # target pos
+                    -self.dofs_velocity_limit * np.ones(9),
+                    -5 * self.sim.env_size * np.ones(3),  # ee pos
+                    -1 * self.sim.env_size * np.ones(3),  # target pos
+                    np.zeros(1),  # ee target distance
                 ]
             ),
             high=np.concatenate(
                 [
-                    2 * self.sim.env_size * np.ones(3),  # ee pos
                     self.sim.action_space_limits[1].cpu().numpy(),
-                    self.sim.action_space_limits[1].cpu().numpy(),
-                    2 * self.sim.env_size * np.ones(3),  # target pos
+                    self.dofs_velocity_limit * np.ones(9),
+                    5 * self.sim.env_size * np.ones(3),  # ee pos
+                    1 * self.sim.env_size * np.ones(3),  # target pos
+                    5 * self.sim.env_size * np.ones(1),  # ee target distance
                 ]
             ),
         )
