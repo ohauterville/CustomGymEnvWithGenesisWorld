@@ -3,7 +3,7 @@ import genesis as gs
 import numpy as np
 import random
 import torch
-
+import time
 
 class GenesisWorldEnv:
     """
@@ -16,7 +16,9 @@ class GenesisWorldEnv:
         max_steps (int): The maximum number of steps allowed per episode. Defaults to 1000.
     """
 
-    def __init__(self, render_mode: Optional[str] = None, max_steps: int = 1000):
+    def __init__(
+        self, n_envs: int = 1, render_mode: Optional[str] = None, max_steps: int = 1000
+    ):
         ########################## config #######################
         # Note: Consider moving these hardcoded values to a configuration dictionary
         # or object for better flexibility.
@@ -61,9 +63,12 @@ class GenesisWorldEnv:
         )
 
         # The target
-        self.target_pos: np.ndarray = self.generate_target_pos(self.env_size)
+        self.n_envs: int = n_envs  # Number of parallel environments
+        self.target_pos: np.ndarray = self.generate_target_pos(
+            self.env_size, self.n_envs
+        )
         self.target: gs.Entity = self.scene.add_entity(
-            gs.morphs.Box(pos=self.target_pos, size=(0.05, 0.05, 0.05))
+            gs.morphs.Box(size=(0.05, 0.05, 0.05))
         )
 
         self.robot_entity: gs.Entity = self.scene.add_entity(
@@ -88,12 +93,12 @@ class GenesisWorldEnv:
             self.robot_entity.get_joint(name).dof_idx_local for name in jnt_names
         ]
 
-        self.current_step: int = 0
-        self.collision_counts: int = 0
+        self.current_step: np.ndarray = np.zeros(self.n_envs, dtype=int)
+        self.collision_counts: np.ndarray = np.zeros(self.n_envs, dtype=int)
 
         #### learning params
         self.max_steps: int = max_steps  # max_steps per episodes
-        self.min_dist_task_completion: float = 0.2
+        self.min_dist_task_completion: float = 0.1
         # --- Reward Coefficients (Consider moving to a config dict) ---
         # self.distance_weight: float = 1.0 # Example if using linear distance reward
         self.energy_penalty_weight: float = 0.001  # Weight for action penalty
@@ -106,8 +111,19 @@ class GenesisWorldEnv:
         )
 
         ########################## build ##########################
-        self.n_envs: int = 1  # Number of parallel environments (stick to 1 for now)
-        self.scene.build()
+        self.scene.build(n_envs=self.n_envs)
+
+        # # *** ADD THIS SECTION FOR EXPLICIT WAIT ***
+        # if render_mode == "human":
+        #     print("Waiting for Pyglet initialization...")
+        #     while not self.scene.visualizer._viewer._initialized_event.is_set():
+        #         time.sleep(0.1)  # Check every 0.1 seconds
+        #     print("Pyglet initialization complete.")
+        # # *** END OF WAIT SECTION ***
+
+        self.target.set_pos(
+            torch.tensor(self.target_pos, dtype=torch.float32, device=gs.device)
+        )
 
         ########################## get info #########################
         self.episode_count: int = 0
@@ -117,7 +133,9 @@ class GenesisWorldEnv:
             f"\nThe max time duration of an episode: {self.max_steps*self.scene.rigid_options.dt:.2f} seconds.\n"
         )
 
-    def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, Dict]:
+    def step(
+        self, action: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, Dict]:
         """
         Advances the environment by one timestep.
 
@@ -195,27 +213,34 @@ class GenesisWorldEnv:
         self.scene.reset()
 
         # --- Optional: Randomize Initial Robot Pose ---
-        # Add small noise to the initial joint configuration for robustness
-        # initial_qpos = self.robot_entity.get_dofs_position() # Get default pose after scene reset
-        # noise_scale = 0.02 # Adjust scale as needed
-        # noise = np.random.uniform(low=-noise_scale, high=noise_scale, size=initial_qpos.shape)
-        # # Ensure noise respects joint limits if necessary
-        # randomized_qpos = initial_qpos.cpu().numpy() + noise
-        # # Clamp to limits if needed: np.clip(randomized_qpos, self.action_space_limits[0].cpu().numpy(), self.action_space_limits[1].cpu().numpy())
-        # self.robot_entity.set_dofs_position(torch.tensor(randomized_qpos, dtype=torch.float32, device=gs.device()))
-        # self.robot_entity.set_dofs_velocity(torch.zeros_like(self.robot_entity.get_dofs_velocity())) # Ensure zero initial velocity
+        initial_qpos = (
+            self.robot_entity.get_dofs_position()
+        )  # Get default pose after scene reset
+        noise_scale = 0.02  # Adjust scale as needed
+        noise = np.random.uniform(
+            low=-noise_scale, high=noise_scale, size=initial_qpos.shape
+        )
+        # Ensure noise respects joint limits if necessary
+        randomized_qpos = initial_qpos.cpu().numpy() + noise
+        # Clamp to limits if needed: np.clip(randomized_qpos, self.action_space_limits[0].cpu().numpy(), self.action_space_limits[1].cpu().numpy())
+        self.robot_entity.set_dofs_position(
+            torch.tensor(randomized_qpos, dtype=torch.float32, device=gs.device)
+        )
+        self.robot_entity.set_dofs_velocity(
+            torch.zeros_like(self.robot_entity.get_dofs_velocity())
+        )  # Ensure zero initial velocity
 
         # Explicitly reset target position after scene reset
         self.target_pos = self.generate_target_pos(
-            self.env_size
+            self.env_size, self.n_envs
         )  # Generate new target position
         self.target.set_pos(
             torch.tensor(self.target_pos, dtype=torch.float32, device=gs.device)
         )  # Set in simulation (Removed parentheses from gs.device)
 
         # Reset step counter and collision counter for the new episode
-        self.current_step = 0
-        self.collision_counts = 0
+        self.current_step = np.zeros(self.n_envs, dtype=int)
+        self.collision_counts = np.zeros(self.n_envs, dtype=int)
         # Reset any other episode-specific state variables here
         # e.g., if using potential-based rewards:
         # self.last_distance_to_target = self.compute_ee_target_distance()
@@ -247,7 +272,10 @@ class GenesisWorldEnv:
         """
         ee_pos = self.get_ee_pos()  # Calculate once
         target_pos = self.target.get_pos().cpu().numpy()  # Get once
-        ee_target_dist = np.linalg.norm(ee_pos - target_pos)
+        ee_target_dist = np.linalg.norm(ee_pos - target_pos, axis=1, keepdims=True)
+
+        # Add zeros to have 30 values
+        zeros = np.zeros((self.n_envs, 5))
 
         return np.concatenate(
             [
@@ -255,11 +283,15 @@ class GenesisWorldEnv:
                 self.robot_entity.get_dofs_velocity().cpu().numpy(),  # Joint velocities
                 ee_pos,  # End-effector position
                 target_pos,  # Target position
-                np.array([ee_target_dist]),  # Distance to target
-            ]
-        )
+                ee_target_dist,  # Distance to target
+                zeros,
+            ],
+            axis=1,
+        ).astype(np.float32)
 
-    def compute_reward_function(self, action: np.ndarray) -> Tuple[float, bool, bool]:
+    def compute_reward_function(
+        self, action: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Calculates the reward for the current state and action, and determines
         termination conditions.
@@ -273,8 +305,8 @@ class GenesisWorldEnv:
                 - terminated (bool): Whether the episode should terminate (task success).
                 - truncated (bool): Whether the episode should truncate (timeout, limits).
         """
-        terminated = False
-        truncated = False
+        terminated = np.zeros(self.n_envs, dtype=bool)
+        truncated = np.zeros(self.n_envs, dtype=bool)
 
         # Calculate distance to target
         distance_to_target = self.compute_ee_target_distance()
@@ -296,19 +328,18 @@ class GenesisWorldEnv:
         # r_distance = np.exp(-k * distance_to_target)
 
         # 2. Energy efficiency penalty: Penalize large actions (squared velocity commands).
-        r_energy = -self.energy_penalty_weight * np.sum(action**2)
+        r_energy = -self.energy_penalty_weight * np.sum(action**2, axis=1)
 
         # 3. Time penalty: Small constant penalty per step to encourage speed.
-        r_time = self.time_penalty
+        r_time = np.full(self.n_envs, self.time_penalty)
 
         # 4. Task Completion Bonus & Termination:
-        r_completion = 0.0
-        if distance_to_target < self.min_dist_task_completion:
-            r_completion = self.task_completion_bonus  # Use defined bonus
-            terminated = True  # End episode successfully
+        r_completion = np.zeros(self.n_envs)
+        terminated = distance_to_target < self.min_dist_task_completion
+        r_completion[terminated] = self.task_completion_bonus  # Use defined bonus
 
         # 5. Collision Penalty & Potential Truncation:
-        r_collision = 0.0
+        r_collision = np.zeros(self.n_envs)
         if self.max_collisions >= 0:  # Only check if collision limit is active
             # Check contacts between robot links and the plane
             # The condition `any(x > 4 ...)` needs clarification based on the MJCF model.
@@ -319,33 +350,38 @@ class GenesisWorldEnv:
                 # Check if any link index in 'link_b' (colliding robot part) is greater than 4
                 # Note: Ensure contacts['link_b'] contains numerical indices
                 try:
-                    if any(int(link_idx) > 4 for link_idx in contacts["link_b"]):
-                        self.collision_counts += 1
-                        r_collision = self.collision_penalty  # Use defined penalty
-                        # Optional: Truncate if max collisions exceeded
-                        if self.collision_counts > self.max_collisions:
-                            truncated = True  # Truncate based on collision count
-                            # Optionally add an extra penalty for truncation due to collision
-                            # r_collision += self.end_ep_penalty / 2 # Example
+                    for i in range(self.n_envs):
+                        if any(int(link_idx) > 4 for link_idx in contacts["link_b"][i]):
+                            self.collision_counts[i] += 1
+                            r_collision[i] = (
+                                self.collision_penalty
+                            )  # Use defined penalty
+                            # Optional: Truncate if max collisions exceeded
+                            if self.collision_counts[i] > self.max_collisions:
+                                truncated[i] = True  # Truncate based on collision count
+                                # Optionally add an extra penalty for truncation due to collision
+                                # r_collision += self.end_ep_penalty / 2 # Example
                 except (ValueError, TypeError) as e:
                     # Handle cases where link_idx might not be convertible to int
                     print(
                         f"Warning: Could not process collision link index: {e}. Contact data: {contacts['link_b']}"
                     )
                     pass  # Or apply a default penalty/action
-                    r_collision = self.collision_penalty  # Use defined penalty
+                    r_collision = np.full(
+                        self.n_envs, self.collision_penalty
+                    )  # Use defined penalty
                     # Optional: Truncate if max collisions exceeded
-                    if self.collision_counts > self.max_collisions:
-                        truncated = True  # Truncate based on collision count
-                        # Optionally add an extra penalty for truncation due to collision
-                        # r_collision += self.end_ep_penalty / 2 # Example
+                    truncated = self.collision_counts > self.max_collisions
+                    # Optionally add an extra penalty for truncation due to collision
+                    # r_collision += self.end_ep_penalty / 2 # Example
 
         # 6. End of Episode Penalty & Truncation (Timeout):
-        r_end_episode = 0.0
+        r_end_episode = np.zeros(self.n_envs)
         # Check for timeout ONLY if not already terminated or truncated by collision
-        if not terminated and not truncated and self.current_step >= self.max_steps:
-            truncated = True  # End episode due to time limit
-            r_end_episode = self.end_ep_penalty  # Use defined penalty
+        timeout = np.logical_and(np.logical_not(terminated), np.logical_not(truncated))
+        timeout = np.logical_and(timeout, self.current_step >= self.max_steps)
+        truncated[timeout] = True  # End episode due to time limit
+        r_end_episode[timeout] = self.end_ep_penalty  # Use defined penalty
 
         # --- Total Reward ---
         reward = (
@@ -355,18 +391,21 @@ class GenesisWorldEnv:
         # Debug info during testing mode
         if self.mode == "test":
             # print(f"Step: {self.current_step}, Dist: {distance_to_target:.3f}, Reward: {reward:.3f}")
-            if truncated:
-                print(f"\nEpisode truncated at step {self.current_step}.")
-            if terminated:
-                print(f"\nEpisode terminated successfully at step {self.current_step}!")
+            for i in range(self.n_envs):
+                if truncated[i]:
+                    print(f"\nEpisode {i} truncated at step {self.current_step[i]}.")
+                if terminated[i]:
+                    print(
+                        f"\nEpisode {i} terminated successfully at step {self.current_step[i]}!"
+                    )
 
         return reward, terminated, truncated
 
-    def compute_ee_target_distance(self) -> float:
+    def compute_ee_target_distance(self) -> np.ndarray:
         """Calculates the Euclidean distance between the end-effector and the target."""
         ee_pos = self.get_ee_pos()
         target_pos = self.target.get_pos().cpu().numpy()
-        return float(np.linalg.norm(ee_pos - target_pos))
+        return np.linalg.norm(ee_pos - target_pos, axis=1)
 
     def get_ee_pos(self) -> np.ndarray:
         """
@@ -394,7 +433,7 @@ class GenesisWorldEnv:
         # ee_pos = (link_positions[-1, :] + link_positions[-2, :]) / 2.0
         # return ee_pos
 
-    def generate_target_pos(self, env_size: float) -> np.ndarray:
+    def generate_target_pos(self, env_size: float, n_envs: int) -> np.ndarray:
         """
         Generates a random target position within the specified environment size,
         respecting minimum and maximum distance constraints.
@@ -404,10 +443,13 @@ class GenesisWorldEnv:
 
         Args:
             env_size (float): The radius defining the boundary for target generation.
+            n_envs (int): The number of environments.
 
         Returns:
             np.ndarray: The (x, y, z) coordinates for the new target position (z is always 0).
         """
+        target_positions = np.zeros((n_envs, 3), dtype=np.float32)
+
         if self.mode == "train":
             # Curriculum Learning: Gradually increase difficulty during training
             episode_num = getattr(self, "episode_count", 0)
@@ -419,20 +461,18 @@ class GenesisWorldEnv:
             min_dist = 0.4
             max_dist = env_size
 
-        # Generate random (x, y) coordinates until they fall within the desired distance range
-        while True:
-            # Sample x, y uniformly within [-env_size, env_size]
-            xy = np.random.uniform(low=-env_size, high=env_size, size=2)
-            # Calculate distance from origin (0, 0)
-            dist = np.sqrt(np.power(xy[0], 2) + np.power(xy[1], 2))
-            # Check if the distance is within the allowed range
-            if min_dist < dist < max_dist:
-                break  # Valid position found
+        for i in range(n_envs):
+            # Generate random (x, y) coordinates until they fall within the desired distance range
+            while True:
+                # Sample x, y uniformly within [-env_size, env_size]
+                xy = np.random.uniform(low=-env_size, high=env_size, size=2)
+                # Calculate distance from origin (0, 0)
+                dist = np.sqrt(np.power(xy[0], 2) + np.power(xy[1], 2))
+                # Check if the distance is within the allowed range
+                if min_dist < dist < max_dist:
+                    break  # Valid position found
 
-        # Return the [x, y, z] position (z is 0 for the plane)
-        return np.array([xy[0], xy[1], 0.0], dtype=np.float32)
+            # Return the [x, y, z] position (z is 0 for the plane)
+            target_positions[i] = np.array([xy[0], xy[1], 0.0], dtype=np.float32)
 
-
-### Unit testing
-# if __name__ == "__main__":
-#      pass
+        return target_positions

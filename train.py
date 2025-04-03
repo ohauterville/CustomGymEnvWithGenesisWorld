@@ -1,7 +1,11 @@
 import gymnasium as gym
 from stable_baselines3 import A2C, PPO, TD3
-from stable_baselines3.common.vec_env import DummyVecEnv
-from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import (
+    DummyVecEnv,
+    VecEnv,
+)  # Corrected import path
+
+# from stable_baselines3.common.monitor import Monitor #remove Monitor
 from torch.utils.tensorboard import SummaryWriter
 import json
 import sys
@@ -12,19 +16,19 @@ import argparse
 import os
 from datetime import datetime
 
-import custom_env  # Even though we don't use this class here, we should include it here so that it registers the environment.
+# Import CustomEnv directly instead of relying on registration side-effect
+from custom_env import CustomEnv
 
 
 def train_sb3(
     env_name="CustomEnv-v0",
     run_name="run_0",
     model_name="PPO",
-    model_learning_rate=0.0001, #default was 0.001
+    model_learning_rate=0.001,  # default was 0.001
     timesteps=100000,
     learning_sessions=1,
     # model_learning_starts=1000,
 ):
-
     # Where to store trained model and logs
     model_dir = os.path.join("models", run_name)
     log_dir = os.path.join("logs", run_name)
@@ -33,23 +37,19 @@ def train_sb3(
 
     print(f"\nThe run name is:\n\n{run_name}\n")
 
-    vec_env = DummyVecEnv([lambda: Monitor(gym.make(env_name))])
-    # env = gym.make(env_name)
-    # env = Monitor(env)
-
-    # num_envs = 1  # Number of parallel environments
-    # env = DummyVecEnv([lambda: Monitor(gym.make(env_name)) for _ in range(num_envs)])  # Parallelized envs
+    # Instantiate CustomEnv directly as it's a VecEnv
+    env = CustomEnv(n_envs=256)
 
     # Check environment properties
-    print("Observation Space:", vec_env.observation_space)
-    print("Action Space:", vec_env.action_space)
+    print("Observation Space:", env.observation_space)
+    print("Action Space:", env.action_space)
 
     if model_name == "PPO":
         model = PPO(
             "MlpPolicy",
-            vec_env,
+            env,
             verbose=0,
-            device="cuda",
+            device="cpu",  # Use "cuda" if you want to try the GPU, but it might be slower
             tensorboard_log=log_dir,
             learning_rate=model_learning_rate,
             ent_coef=0.01,
@@ -57,7 +57,7 @@ def train_sb3(
     elif model_name == "TD3":
         model = TD3(
             "MlpPolicy",
-            vec_env,
+            env,
             verbose=0,
             device="cuda",
             tensorboard_log=log_dir,
@@ -69,7 +69,8 @@ def train_sb3(
         sys.exit
 
     writer = SummaryWriter(log_dir=log_dir)
-    base_env = get_base_env(vec_env)
+    # get_base_env needs the VecEnv instance
+    base_env = get_base_env(env)
     # Your fixed configuration dictionary
     run_specs = {
         "env": env_name,
@@ -81,14 +82,14 @@ def train_sb3(
             # Add other relevant model hyperparameters if needed
         },
         "reward_config": {
-            "max_steps": base_env.sim.max_steps,
-            "min_dist_task_completion": base_env.sim.min_dist_task_completion,
-            "energy_penalty_weight": base_env.sim.energy_penalty_weight,
-            "time_penalty": base_env.sim.time_penalty,
-            "task_completion_bonus": base_env.sim.task_completion_bonus,
-            "end_ep_penalty": base_env.sim.end_ep_penalty,
-            "collision_penalty": base_env.sim.collision_penalty,
-            "max_collisions": base_env.sim.max_collisions,
+            "max_steps": base_env.max_steps,
+            "min_dist_task_completion": base_env.min_dist_task_completion,
+            "energy_penalty_weight": base_env.energy_penalty_weight,
+            "time_penalty": base_env.time_penalty,
+            "task_completion_bonus": base_env.task_completion_bonus,
+            "end_ep_penalty": base_env.end_ep_penalty,
+            "collision_penalty": base_env.collision_penalty,
+            "max_collisions": base_env.max_collisions,
         },
         "notes": "Reach target task with updated reward structure.",  # Updated notes
     }
@@ -105,15 +106,32 @@ def train_sb3(
         model.learn(total_timesteps=timesteps, reset_num_timesteps=False)  # train
         model.save(os.path.join(model_dir, f"{run_name}_{timesteps*i}"))
 
-    vec_env.close()
+    env.close()  # Close the direct env instance
     print(f"\nThe run name is:\n\n{run_name}\n")
 
 
-def get_base_env(vec_env, env_idx=0):
-    current_env = vec_env.envs[env_idx]
-    while hasattr(current_env, "env"):  # Unwrap all layers
-        current_env = current_env.env
-    return current_env
+def get_base_env(vec_env: VecEnv):  # Expect a VecEnv
+    # Access the underlying sim environment from CustomEnv
+    # Assuming CustomEnv is the direct VecEnv instance passed
+    if isinstance(vec_env, CustomEnv):
+        # Access the .sim attribute we defined in CustomEnv
+        # Need to make sure CustomEnv actually has .sim accessible
+        # It does, from __init__
+        return vec_env.sim
+    else:
+        # This case should ideally not happen now, but keep as fallback
+        # Attempt to get the attribute from the first environment if it's a standard VecEnv wrapper
+        try:
+            return vec_env.get_attr("sim")[0]
+        except (AttributeError, IndexError):
+            # If 'sim' doesn't exist or get_attr fails, return the base env
+            current_env = vec_env
+            while hasattr(current_env, "env"):
+                current_env = current_env.env
+            return current_env
+
+    # The lines below were incorrectly indented remnants and are removed.
+    # The logic is handled by the 'else' block above.
 
 
 if __name__ == "__main__":
@@ -129,12 +147,13 @@ if __name__ == "__main__":
     now = datetime.now()
     formatted_time = now.strftime("%m%d%H%M")
 
-    env_name = "CustomEnv-v0"
+    # env_name is no longer used for gym.make
+    # env_name = "CustomEnv-v0"
     run_name = formatted_time + "_" + model_name
     learning_sessions = 10
 
     train_sb3(
-        env_name=env_name,
+        # env_name is removed as we instantiate CustomEnv directly
         run_name=run_name,
         learning_sessions=learning_sessions,
         model_name=model_name,

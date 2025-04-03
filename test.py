@@ -5,7 +5,7 @@ import os
 import argparse
 import sys
 
-import custom_env  # Even though we don't use this class here, we should include it here so that it registers the WarehouseRobot environment.
+from custom_env import CustomEnv   # Even though we don't use this class here, we should include it here so that it registers the WarehouseRobot environment.
 
 
 # Test using StableBaseline3. Lots of hardcoding for simplicity.
@@ -21,7 +21,8 @@ def test_sb3(
     # Where to load the trained model and logs
     model_dir = os.path.join("models", model_to_load)
 
-    env = gym.make(env_name, render_mode="human" if render else None)
+    env = CustomEnv(n_envs=1, render_mode="human" if render else None)
+    # env = gym.make(env_name, n_envs=1, render_mode="human" if render else None)
 
     # Load model
     if model_name == "PPO":
