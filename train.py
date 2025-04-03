@@ -19,7 +19,7 @@ def train_sb3(
     env_name="CustomEnv-v0",
     run_name="run_0",
     model_name="PPO",
-    model_learning_rate=0.001,
+    model_learning_rate=0.0001,
     timesteps=100000,
     learning_sessions=1,
     # model_learning_starts=1000,
@@ -78,17 +78,19 @@ def train_sb3(
         "hyperparameters": {
             "learning_rate": model.learning_rate,
             "gamma": model.gamma,
+            # Add other relevant model hyperparameters if needed
         },
         "reward_config": {
             "max_steps": base_env.sim.max_steps,
             "min_dist_task_completion": base_env.sim.min_dist_task_completion,
-            "distance_weight": base_env.sim.distance_weight,
-            "task_completion_reward": base_env.sim.task_completion_reward,
-            "time_reward": base_env.sim.end_ep_reward,
-            "collision_reward": base_env.sim.collision_reward,
+            "energy_penalty_weight": base_env.sim.energy_penalty_weight,
+            "time_penalty": base_env.sim.time_penalty,
+            "task_completion_bonus": base_env.sim.task_completion_bonus,
+            "end_ep_penalty": base_env.sim.end_ep_penalty,
+            "collision_penalty": base_env.sim.collision_penalty,
             "max_collisions": base_env.sim.max_collisions,
         },
-        "notes": "Target near floor with collision avoidance",
+        "notes": "Reach target task with updated reward structure.", # Updated notes
     }
 
     config_json = json.dumps(run_specs, indent=2)
@@ -119,7 +121,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     # Add an argument for the string
-    parser.add_argument("--model", type=str, default="TD3", help="TD3 or PPO")
+    parser.add_argument("--model", type=str, default="PPO", help="TD3 or PPO")
     args = parser.parse_args()
 
     model_name = args.model
