@@ -19,7 +19,7 @@ def train_sb3(
     env_name="CustomEnv-v0",
     run_name="run_0",
     model_name="PPO",
-    model_learning_rate=0.0001,
+    model_learning_rate=0.0001, #default was 0.001
     timesteps=100000,
     learning_sessions=1,
     # model_learning_starts=1000,
@@ -90,7 +90,7 @@ def train_sb3(
             "collision_penalty": base_env.sim.collision_penalty,
             "max_collisions": base_env.sim.max_collisions,
         },
-        "notes": "Reach target task with updated reward structure.", # Updated notes
+        "notes": "Reach target task with updated reward structure.",  # Updated notes
     }
 
     config_json = json.dumps(run_specs, indent=2)

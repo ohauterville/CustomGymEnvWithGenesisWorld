@@ -63,7 +63,7 @@ if __name__ == "__main__":
 
     # Add an argument for the string
     parser.add_argument("--run_id", type=str, required=True, help="run_id MMDDHHMM")
-    parser.add_argument("--model", type=str, default="TD3", help="TD3 or PPO")
+    parser.add_argument("--model", type=str, default="PPO", help="TD3 or PPO")
     parser.add_argument(
         "--episode",
         type=int,
