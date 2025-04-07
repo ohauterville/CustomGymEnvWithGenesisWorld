@@ -1,206 +1,190 @@
 import gymnasium as gym
-from gymnasium.envs.registration import register
-from stable_baselines3.common.vec_env import VecEnv  # Import VecEnv
+from gymnasium.envs.registration import register # Keep for potential future use, though not used now
+from stable_baselines3.common.vec_env import VecEnv # Import VecEnv
 from genesis_world import GenesisWorldEnv  # Import your environment class
 import numpy as np
-
-# Removed Dict from import as we'll use built-in dict
 from typing import Any, Callable, List, Optional, Sequence, Tuple, Union, Type
+import time # Keep time import for potential future use
 
-# import time # Remove time
-
-
-class CustomEnv(VecEnv):  # Inherit from VecEnv
-    def __init__(self, render_mode=None, n_envs=1):
-        self.sim = GenesisWorldEnv(render_mode=render_mode, n_envs=n_envs)
+class CustomEnv(VecEnv): # Inherit from VecEnv
+    # Add n_envs parameter to init
+    def __init__(self, n_envs=16, render_mode=None):
+        # Store render_mode for VecEnv compatibility
+        self.render_mode = render_mode
+        # Pass n_envs and render_mode to GenesisWorldEnv
+        self.sim = GenesisWorldEnv(n_envs=n_envs, render_mode=render_mode)
         # VecEnv requires num_envs, observation_space, action_space at init
         # Important: SB3 VecEnv expects spaces *without* the n_envs dimension
-        obs_shape = (30,)  # Shape for a single environment
-        action_shape = (9,)  # Shape for a single environment
-        single_observation_space = gym.spaces.Box(
-            low=-np.inf, high=np.inf, shape=obs_shape, dtype=np.float32
-        )
-        single_action_space = gym.spaces.Box(
-            low=-1, high=1, shape=action_shape, dtype=np.float32
-        )
+        # Use hardcoded shapes as in the previous working version
+        obs_shape = (30,) # Shape for a single environment
+        action_shape = (9,) # Shape for a single environment
 
-        super().__init__(self.sim.n_envs, single_observation_space, single_action_space)
+        single_observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=obs_shape, dtype=np.float32)
+        single_action_space = gym.spaces.Box(low=-1, high=1, shape=action_shape, dtype=np.float32)
+
+        # Use the passed n_envs for super().__init__
+        # Ensure self.sim has n_envs attribute available after init
+        actual_n_envs = getattr(self.sim, 'n_envs', n_envs) # Use sim's n_envs if available, else the param
+        super().__init__(actual_n_envs, single_observation_space, single_action_space)
 
         # Store sim attributes after super().__init__
-        self.max_steps = self.sim.max_steps
-        self.min_dist_task_completion = self.sim.min_dist_task_completion
-        self.energy_penalty_weight = self.sim.energy_penalty_weight
-        self.time_penalty = self.sim.time_penalty
-        self.task_completion_bonus = self.sim.task_completion_bonus
-        self.end_ep_penalty = self.sim.end_ep_penalty
-        self.collision_penalty = self.sim.collision_penalty
-        self.max_collisions = self.sim.max_collisions
-        self._actions: np.ndarray  # To store actions for step_wait
+        # Ensure these attributes exist in GenesisWorldEnv
+        self.max_steps = getattr(self.sim, 'max_steps', 1000) # Default if not present
+        self.min_dist_task_completion = getattr(self.sim, 'min_dist_task_completion', 0.1)
+        self.energy_penalty_weight = getattr(self.sim, 'energy_penalty_weight', 0.0)
+        self.time_penalty = getattr(self.sim, 'time_penalty', 0.0)
+        self.task_completion_bonus = getattr(self.sim, 'task_completion_bonus', 0.0)
+        self.end_ep_penalty = getattr(self.sim, 'end_ep_penalty', 0.0)
+        self.collision_penalty = getattr(self.sim, 'collision_penalty', 0.0)
+        self.max_collisions = getattr(self.sim, 'max_collisions', 5)
+        self._actions: np.ndarray # To store actions for step_wait
+        # Add trackers for episode stats again
+        self.episode_rewards = np.zeros(self.num_envs, dtype=np.float32)
+        self.episode_lengths = np.zeros(self.num_envs, dtype=np.int32)
+        self.episode_start_times = np.array([time.time()] * self.num_envs, dtype=np.float64)
 
-    # Implement VecEnv abstract methods
+
+    # Implement VecEnv abstract methods (Re-adding episode tracking)
     def step_async(self, actions: np.ndarray) -> None:
-        # Store actions, actual step happens in step_wait
         self._actions = actions
 
-    def step_wait(
-        self,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, List[dict]]:  # Changed Dict to dict
-        # Use the stored actions to step the underlying sim
-        # Note: GenesisWorldEnv.step likely returns arrays for reward, terminated, truncated
-        next_obs, rewards, terminated, truncated, info = self.sim.step(
-            self._actions
-        )  # Assuming reward is plural now
+    def step_wait(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, List[dict]]:
+        # Assuming sim.step returns arrays for rewards, terminated, truncated
+        next_obs, rewards, terminated, truncated, info = self.sim.step(self._actions)
 
-        # SB3 VecEnv expects 'infos' to be a list of dicts, one per env.
-        # If self.sim.step returns a single dict with array values, convert it.
-        # Assuming info is a dict like {'key1': [val1_env1, val1_env2], 'key2': [val2_env1, val2_env2]}
-        # Or potentially already a list of dicts if GenesisWorldEnv is well-behaved.
-        # Let's assume we need to convert it for robustness.
-        # If info is already a list of dicts, this might need adjustment based on GenesisWorldEnv's actual return.
+        # Update episode trackers
+        self.episode_rewards += rewards
+        self.episode_lengths += 1
+
+        # Convert info dict if necessary (assuming single dict with arrays)
         infos = [{} for _ in range(self.num_envs)]
         for key, value in info.items():
             if isinstance(value, (list, np.ndarray)) and len(value) == self.num_envs:
                 for i in range(self.num_envs):
                     infos[i][key] = value[i]
             else:
-                # If a value isn't per-env, broadcast it (e.g., shared info)
-                for i in range(self.num_envs):
+                 for i in range(self.num_envs):
                     infos[i][key] = value
 
-        # Ensure dones are boolean arrays
         terminated = np.array(terminated, dtype=bool)
         truncated = np.array(truncated, dtype=bool)
-        dones = terminated | truncated  # Combine for easier iteration
+        dones = terminated | truncated
 
-        # Handle automatic reset and logging episode stats
+        # Add final observation/info for SB3 compatibility when env terminates/truncates
         for i in range(self.num_envs):
-            if dones[i]:
-                # SB3 expects 'final_observation' and 'final_info' in the info dict
-                # when an episode ends. Capture them *before* potential reset overwrites next_obs.
-                # Check if the original 'info' dict from self.sim.step contained them.
-                # If not, use the current next_obs[i] as final_observation.
-                if "final_observation" not in infos[i]:
-                    infos[i]["final_observation"] = next_obs[i].copy()
-                if "final_info" not in infos[i]:
-                    # Include any other relevant info from the original dict if needed
-                    original_env_info = {
-                        k: v[i]
-                        for k, v in info.items()
-                        if isinstance(v, (list, np.ndarray)) and len(v) == self.num_envs
-                    }
-                    infos[i]["final_info"] = original_env_info
+             if dones[i]:
+                 # Store final observation if not already present in info
+                 if "final_observation" not in infos[i]:
+                     infos[i]["final_observation"] = next_obs[i].copy()
+                 # Store final info if not already present
+                 if "final_info" not in infos[i]:
+                     original_env_info = {k: v[i] for k, v in info.items() if isinstance(v, (list, np.ndarray)) and len(v) == self.num_envs}
+                     infos[i]["final_info"] = original_env_info
+                 # Add the episode statistics dictionary for SB3 logging
+                 # DEBUG: Print length before recording
+                 print(f"DEBUG: Env {i} done. Length recorded: {self.episode_lengths[i]}")
+                 episode_info = {
+                     "r": self.episode_rewards[i],
+                     "l": self.episode_lengths[i],
+                     "t": round(time.time() - self.episode_start_times[i], 6),
+                 }
+                 infos[i]["episode"] = episode_info
 
-                # Reset specific environment 'i' if GenesisWorldEnv supports it,
-                # otherwise, reset all and update the observation for this env.
-                # Assuming self.sim.reset() resets all:
-                # Note: This might be inefficient if only one env needs reset.
-                # A better GenesisWorldEnv would allow resetting individual envs.
-                # We only reset if *any* env is done, to avoid unnecessary resets.
-                # This reset logic might need refinement based on self.sim behavior.
-                # Let's assume reset happens implicitly or is handled by SB3's buffer logic
-                # based on the 'dones' signal and 'final_observation'/'final_info'.
-                # SB3's OnPolicyAlgorithm handles the reset based on dones.
-                pass  # Rely on SB3's handling via dones signal
+                 # Reset trackers for this environment
+                 self.episode_rewards[i] = 0
+                 self.episode_lengths[i] = 0
+                 self.episode_start_times[i] = time.time()
 
-        # SB3 expects a single 'dones' array
+        # Return rewards array (plural) as tracked
         return next_obs, rewards, dones, infos
 
-    def reset(self) -> np.ndarray:  # VecEnv reset returns only observations
-        # Assuming self.sim.reset() returns obs, info
+    def reset(self) -> np.ndarray:
         obs, _info = self.sim.reset()
+        # Reset episode trackers
+        self.episode_rewards.fill(0.0)
+        self.episode_lengths.fill(0)
+        self.episode_start_times = np.array([time.time()] * self.num_envs, dtype=np.float64)
         return obs
 
     def close(self) -> None:
         self.sim.close()
 
-    # Implement other VecEnv methods (can often be simple pass-throughs or basic implementations)
-    def get_attr(
-        self, attr_name: str, indices: Optional[Union[int, Sequence[int]]] = None
-    ) -> List[Any]:
-        """Return attribute from vectorized environment (see base class)."""
-        # Simplified: assumes attribute exists on self.sim and is same across envs or handles indices if needed
+    # --- Other VecEnv methods (simplified implementations) ---
+    def get_attr(self, attr_name: str, indices: Optional[Union[int, Sequence[int]]] = None) -> List[Any]:
+        # Handle render_mode specifically for VecEnv compatibility
+        if attr_name == "render_mode":
+            # Return self.render_mode for all requested indices
+            if indices is None:
+                indices = list(range(self.num_envs))
+            elif isinstance(indices, int):
+                indices = [indices]
+            return [self.render_mode for _ in indices]
+
+        # Otherwise, try to get the attribute from self.sim
         target_obj = self.sim
         if indices is None:
             indices = list(range(self.num_envs))
         elif isinstance(indices, int):
             indices = [indices]
-
         try:
             attr = getattr(target_obj, attr_name)
-            # If the attribute itself is array-like and per-env, return the indexed values
             if isinstance(attr, (list, np.ndarray)) and len(attr) == self.num_envs:
-                return [attr[i] for i in indices]
+                 return [attr[i] for i in indices]
             else:
-                # Otherwise, assume it's a shared attribute and return it for each index
                 return [attr for _ in indices]
         except AttributeError:
-            raise AttributeError(f"Attribute {attr_name} not found in {target_obj}")
+            # Fallback to VecEnv default or raise error
+            return super().get_attr(attr_name, indices)
 
-    def set_attr(
-        self,
-        attr_name: str,
-        value: Any,
-        indices: Optional[Union[int, Sequence[int]]] = None,
-    ) -> None:
-        """Set attribute inside vectorized environments (see base class)."""
-        # Simplified: assumes attribute exists on self.sim
+
+    def set_attr(self, attr_name: str, value: Any, indices: Optional[Union[int, Sequence[int]]] = None) -> None:
         target_obj = self.sim
-        if indices is None:
-            indices = list(range(self.num_envs))
-        elif isinstance(indices, int):
-            indices = [indices]
-
-        # Simple approach: set the attribute on the main sim object.
-        # This might not work correctly if the attribute needs to be per-environment.
-        # Requires knowledge of how self.sim handles attributes.
+        # Simplified: Set on the main sim object. May need adjustment based on GenesisWorldEnv.
         if hasattr(target_obj, attr_name):
-            setattr(target_obj, attr_name, value)
+             setattr(target_obj, attr_name, value)
         else:
-            raise AttributeError(f"Attribute {attr_name} not found in {target_obj}")
+             # Fallback to VecEnv default or raise error
+             super().set_attr(attr_name, value, indices)
 
-    def env_method(
-        self,
-        method_name: str,
-        *method_args,
-        indices: Optional[Union[int, Sequence[int]]] = None,
-        **method_kwargs,
-    ) -> List[Any]:
-        """Call instance methods of vectorized environments."""
-        # Simplified: calls method on self.sim
+
+    def env_method(self, method_name: str, *method_args, indices: Optional[Union[int, Sequence[int]]] = None, **method_kwargs) -> List[Any]:
         target_obj = self.sim
         if indices is None:
             indices = list(range(self.num_envs))
         elif isinstance(indices, int):
             indices = [indices]
-
         try:
             method = getattr(target_obj, method_name)
-            # Simple approach: call method once. Assumes method handles vectorization or is shared.
-            result = method(*method_args, **method_kwargs)
-            # Assume result applies to all envs, return list
+            result = method(*method_args, **method_kwargs) # Assumes method handles vectorization or is shared
             return [result for _ in indices]
         except AttributeError:
-            raise AttributeError(f"Method {method_name} not found in {target_obj}")
+            # Fallback to VecEnv default or raise error
+            return super().env_method(method_name, *method_args, indices=indices, **method_kwargs)
 
-    def env_is_wrapped(
-        self,
-        wrapper_class: Type[gym.Wrapper],
-        indices: Optional[Union[int, Sequence[int]]] = None,
-    ) -> List[bool]:
-        """Check if worker environments are wrapped with a given wrapper"""
-        # Since we wrap self.sim directly, check if self.sim is wrapped.
-        # This is a simplification. A real VecEnv might have individual wrappers.
+
+    def env_is_wrapped(self, wrapper_class: Type[gym.Wrapper], indices: Optional[Union[int, Sequence[int]]] = None) -> List[bool]:
         if indices is None:
             indices = list(range(self.num_envs))
         elif isinstance(indices, int):
             indices = [indices]
+        # Check if self.sim is an instance of the wrapper class
+        is_wrapped = isinstance(self.sim, wrapper_class)
+        # Check if self is an instance (for wrappers applied to CustomEnv itself)
+        self_is_wrapped = isinstance(self, wrapper_class)
+        # Combine checks (adjust logic if needed)
+        return [(is_wrapped or self_is_wrapped) for _ in indices]
 
-        # Check if self.sim itself is an instance of wrapper_class
-        return [isinstance(self.sim, wrapper_class) for _ in indices]
 
+    def get_images(self) -> Sequence[np.ndarray]:
+        if hasattr(self.sim, 'render') and callable(self.sim.render):
+             # Placeholder: Assumes render returns a list of images or handles num_envs
+             try:
+                 # Try rendering all envs if possible
+                 return self.sim.render(mode='rgb_array')
+             except:
+                 # Fallback to rendering one by one (less efficient)
+                 return [self.sim.render(mode='rgb_array', env_index=i) for i in range(self.num_envs)]
+        else:
+             return super().get_images()
 
-register(
-    id="CustomEnv-v0",
-    entry_point="custom_env:CustomEnv",  # Corrected entry point
-    max_episode_steps=1000,  # Or your desired max steps
-)
+# Removed gymnasium registration

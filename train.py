@@ -21,7 +21,8 @@ from custom_env import CustomEnv
 
 
 def train_sb3(
-    env_name="CustomEnv-v0",
+    # env_name removed, n_envs added
+    n_envs=16, # Default value
     run_name="run_0",
     model_name="PPO",
     model_learning_rate=0.001,  # default was 0.001
@@ -37,8 +38,8 @@ def train_sb3(
 
     print(f"\nThe run name is:\n\n{run_name}\n")
 
-    # Instantiate CustomEnv directly as it's a VecEnv
-    env = CustomEnv(n_envs=256)
+    # Instantiate CustomEnv directly, passing n_envs
+    env = CustomEnv(n_envs=n_envs)
 
     # Check environment properties
     print("Observation Space:", env.observation_space)
@@ -73,7 +74,8 @@ def train_sb3(
     base_env = get_base_env(env)
     # Your fixed configuration dictionary
     run_specs = {
-        "env": env_name,
+        "env_class": "CustomEnv", # Use class name instead of env_name ID
+        "num_envs": n_envs, # Log the number of envs used
         "run_name": run_name,
         "algorithm": model_name,
         "hyperparameters": {
@@ -138,22 +140,22 @@ if __name__ == "__main__":
     # Create the parser
     parser = argparse.ArgumentParser()
 
-    # Add an argument for the string
+    # Add arguments
     parser.add_argument("--model", type=str, default="PPO", help="TD3 or PPO")
+    parser.add_argument("--n_envs", type=int, default=16, help="Number of parallel environments")
     args = parser.parse_args()
 
     model_name = args.model
+    n_envs = args.n_envs
 
     now = datetime.now()
     formatted_time = now.strftime("%m%d%H%M")
 
-    # env_name is no longer used for gym.make
-    # env_name = "CustomEnv-v0"
     run_name = formatted_time + "_" + model_name
     learning_sessions = 10
 
     train_sb3(
-        # env_name is removed as we instantiate CustomEnv directly
+        n_envs=n_envs, # Pass n_envs
         run_name=run_name,
         learning_sessions=learning_sessions,
         model_name=model_name,

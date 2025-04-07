@@ -245,6 +245,10 @@ class GenesisWorldEnv:
         # e.g., if using potential-based rewards:
         # self.last_distance_to_target = self.compute_ee_target_distance()
 
+        # Calculate initial distance AFTER setting state
+        initial_distance = self.compute_ee_target_distance()
+        print(f"DEBUG: Env Reset - Initial Distances: {initial_distance}") # Print for all envs
+
         # Get the initial observation AFTER setting initial state and target
         obs = self.get_observation()
 
